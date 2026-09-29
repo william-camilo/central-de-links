@@ -151,6 +151,20 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .modal-opt b{font-size:13px;color:var(--ink-strong);font-weight:700}
 .modal-opt span{font-size:11px;color:var(--ink-faint)}
 .modal-opt.all{background:var(--accent-wash-soft);border-color:#33406A}
+
+/* delete controls */
+.theme-card{position:relative;padding-top:26px}
+.theme-del{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:7px;background:rgba(0,0,0,0.28);border:none;display:flex;align-items:center;justify-content:center;padding:0}
+.theme-del:hover{background:rgba(239,68,68,0.3)}
+.item-del{width:28px;height:28px;border-radius:9px;background:#1A1F2B;border:1px solid var(--card-border-soft);display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;margin-left:auto}
+.item-del:hover{border-color:#EF4444;background:rgba(239,68,68,0.12)}
+.tema-del-btn,.danger-btn{border-radius:12px;background:var(--card);border:1px solid var(--card-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tema-del-btn{width:44px;height:44px}
+.tema-del-btn:hover,.danger-btn:hover{border-color:#EF4444;background:rgba(239,68,68,0.1)}
+.danger-zone{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);border-radius:13px;padding:11px 14px}
+.danger-zone .txt{font-size:11.5px;color:#F0A6A6;line-height:1.4}
+.danger-zone .txt b{color:#FF8B8B;display:block;font-size:12.5px;margin-bottom:1px}
+.danger-btn{height:38px;padding:0 13px;gap:6px;font-size:11.5px;font-weight:700;color:#FF8B8B;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -174,6 +188,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 var SUPABASE_URL = "https://vuakukopbjvdsczhhzjj.supabase.co";
 var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1YWt1a29wYmp2ZHNjemhoempqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MDM4NDcsImV4cCI6MjEwNjE3OTg0N30.gVCtEcYln55EF88JDIy4qndLyN32YjJ_SskANF54vJw";
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var DELETE_FN_URL = SUPABASE_URL + "/functions/v1/manage-delete";
 
 var homeEl = document.getElementById('home');
 var temaEl = document.getElementById('tema');
@@ -193,7 +208,8 @@ var ICO = {
   playsm: '<svg viewBox="0 0 24 24" width="10" height="10" fill="#2DD4BF" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
   linksm: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
   warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-  close: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#C7CCDA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+  close: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#C7CCDA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
 };
 
 function esc(s){
@@ -380,6 +396,63 @@ function todayFromIso(iso){
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
 
+// ---------- exclusão (via Edge Function protegida por PIN) ----------
+function getPin(){
+  var pin = sessionStorage.getItem('cdl_pin');
+  if(pin) return pin;
+  pin = window.prompt('Digite o PIN de exclusão pra confirmar:');
+  if(pin) sessionStorage.setItem('cdl_pin', pin);
+  return pin;
+}
+
+function callDelete(type, id){
+  var pin = getPin();
+  if(!pin) return Promise.reject(new Error('Exclusão cancelada — PIN não informado.'));
+  return fetch(DELETE_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-pin': pin },
+    body: JSON.stringify({ type: type, id: id })
+  }).then(function(res){
+    if(res.status === 401){
+      sessionStorage.removeItem('cdl_pin');
+      throw new Error('PIN incorreto.');
+    }
+    if(!res.ok){
+      return res.json().catch(function(){ return {}; }).then(function(j){
+        throw new Error(j.error || ('Falha ao excluir (HTTP '+res.status+').'));
+      });
+    }
+    return res.json();
+  });
+}
+
+function afterDelete(){
+  return loadData().then(function(){ route(); });
+}
+
+function deleteLinkFlow(linkId, title){
+  var ok = window.confirm('Excluir o link "'+(title||'(sem título)')+'"?\n\nEssa ação não pode ser desfeita.');
+  if(!ok) return;
+  callDelete('link', linkId).then(afterDelete).catch(function(err){ alert(err.message || 'Erro ao excluir.'); });
+}
+
+function deleteCategoryFlow(catId, catName, n){
+  var ok = window.confirm('Excluir o tema "'+catName+'" e '+(n===1?'o link':'todos os '+n+' links')+' dentro dele?\n\nEssa ação não pode ser desfeita.');
+  if(!ok) return;
+  callDelete('category', catId).then(function(){
+    if(location.hash.indexOf('/tema/'+catId) !== -1) location.hash = '#/';
+    return afterDelete();
+  }).catch(function(err){ alert(err.message || 'Erro ao excluir.'); });
+}
+
+function deleteAllFlow(){
+  var ok1 = window.confirm('Excluir TODOS os temas e TODOS os '+state.links.length+' links salvos?\n\nEssa ação não pode ser desfeita.');
+  if(!ok1) return;
+  var ok2 = window.confirm('Tem certeza mesmo? Não tem como voltar atrás depois disso.');
+  if(!ok2) return;
+  callDelete('all', null).then(afterDelete).catch(function(err){ alert(err.message || 'Erro ao excluir.'); });
+}
+
 // ---------- data ----------
 function loadData(){
   return Promise.all([
@@ -452,13 +525,21 @@ function renderHome(){
     state.categories.forEach(function(c){
       var n = linksByCategory(c.id).length;
       var citedN = linksByCategory(c.id).reduce(function(s,l){return s+(l.cited_links?l.cited_links.length:0);},0);
-      html += '<a href="#/tema/'+c.id+'" class="theme-card" style="border-color:'+esc(c.color)+'33">'
+      html += '<div class="theme-card" data-nav="#/tema/'+c.id+'" style="border-color:'+esc(c.color)+'33">'
+        + '<button class="theme-del" type="button" data-id="'+esc(c.id)+'" data-name="'+esc(c.name)+'" data-n="'+n+'" aria-label="Excluir tema">'+ICO.trash+'</button>'
         + '<span class="name"><span class="swatch" style="background:'+esc(c.color)+'"></span>'+esc(c.name)+'</span>'
         + '<span class="meta">'+n+' link'+(n===1?'':'s')+(citedN?' · '+citedN+' citados':'')+'</span>'
-        + '</a>';
+        + '</div>';
     });
     html += '<button class="theme-card new" disabled title="Categorias novas são criadas automaticamente quando você manda um link">'+ICO.plus+'Novo tema</button>';
     html += '</div></div>';
+
+    if(state.categories.length){
+      html += '<div class="danger-zone" style="margin-top:14px">'
+        + '<div class="txt"><b>Zona de risco</b>Apaga todos os temas e links salvos, sem volta.</div>'
+        + '<button class="danger-btn" id="btn-delete-all" type="button">'+ICO.trash+'Excluir tudo</button>'
+        + '</div>';
+    }
   }
 
   html += '<div>';
@@ -486,6 +567,21 @@ function renderHome(){
   }
   var btnPdfHome = document.getElementById('btn-pdf-home');
   if(btnPdfHome){ btnPdfHome.addEventListener('click', openHomePdfPicker); }
+
+  homeEl.querySelectorAll('.theme-card[data-nav]').forEach(function(card){
+    card.addEventListener('click', function(e){
+      if(e.target.closest('.theme-del')) return;
+      location.hash = card.getAttribute('data-nav');
+    });
+  });
+  homeEl.querySelectorAll('.theme-del').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      deleteCategoryFlow(btn.getAttribute('data-id'), btn.getAttribute('data-name'), parseInt(btn.getAttribute('data-n'),10)||0);
+    });
+  });
+  var btnDeleteAll = document.getElementById('btn-delete-all');
+  if(btnDeleteAll){ btnDeleteAll.addEventListener('click', deleteAllFlow); }
 }
 
 function recentCard(l){
@@ -523,6 +619,7 @@ function renderTema(catId){
   var html = '';
   html += '<div class="topbar">'
     + '<a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a>'
+    + '<button class="tema-del-btn" id="btn-del-tema" type="button" aria-label="Excluir tema">'+ICO.trash+'</button>'
     + '</div>';
 
   html += '<div class="tema-head">'
@@ -543,6 +640,15 @@ function renderTema(catId){
 
   var btnPdfTema = document.getElementById('btn-pdf-tema');
   if(btnPdfTema){ btnPdfTema.addEventListener('click', function(){ openTemaPdfPicker(catId); }); }
+
+  var btnDelTema = document.getElementById('btn-del-tema');
+  if(btnDelTema){ btnDelTema.addEventListener('click', function(){ deleteCategoryFlow(catId, cat.name, items.length); }); }
+
+  temaEl.querySelectorAll('.item-del').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      deleteLinkFlow(btn.getAttribute('data-link-id'), btn.getAttribute('data-title'));
+    });
+  });
 }
 
 function itemCard(l){
@@ -554,7 +660,9 @@ function itemCard(l){
   // sem armazenamento de imagem própria ainda — thumbnail fica pro bot preencher no futuro (campo screenshot_url)
 
   var html = '<div class="item-card">';
-  html += '<div class="item-top">'+typeBadge+'<span class="item-author">'+esc(domainOf(l.raw_url))+' · '+esc(timeAgo(l.processed_at))+'</span></div>';
+  html += '<div class="item-top">'+typeBadge+'<span class="item-author">'+esc(domainOf(l.raw_url))+' · '+esc(timeAgo(l.processed_at))+'</span>'
+    + '<button class="item-del" type="button" data-link-id="'+esc(l.id)+'" data-title="'+esc(l.title||'')+'" aria-label="Excluir link">'+ICO.trash+'</button>'
+    + '</div>';
   if(l.title){
     html += '<div><div class="item-label">TÍTULO</div><div class="item-title">'+esc(l.title)+'</div></div>';
   }
