@@ -136,6 +136,21 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .paper-hr{height:1px;background:#E3E6EC}
 
 .link-plain{color:var(--accent);word-break:break-all}
+
+/* PDF picker modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(5,7,12,0.72);display:flex;align-items:flex-end;justify-content:center;z-index:30;padding:16px;backdrop-filter:blur(2px)}
+@media (min-width:520px){ .modal-overlay{align-items:center} }
+.modal-card{width:100%;max-width:420px;background:var(--card);border:1px solid var(--card-border);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;max-height:78vh;overflow:auto}
+.modal-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.modal-card h3{font-family:var(--display);font-size:15.5px;font-weight:700;color:var(--ink-strong)}
+.modal-card .sub{font-size:11.5px;color:var(--ink-mute);margin-top:2px}
+.modal-close{flex-shrink:0;width:30px;height:30px;border-radius:9px;background:#1A1F2B;border:1px solid var(--card-border);color:var(--ink-mute);font-size:14px;display:flex;align-items:center;justify-content:center;padding:0}
+.modal-opts{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.modal-opt{display:flex;flex-direction:column;gap:2px;text-align:left;background:#161B26;border:1px solid var(--card-border-soft);border-radius:12px;padding:12px 14px;width:100%}
+.modal-opt:hover,.modal-opt:focus-visible{border-color:var(--accent)}
+.modal-opt b{font-size:13px;color:var(--ink-strong);font-weight:700}
+.modal-opt span{font-size:11px;color:var(--ink-faint)}
+.modal-opt.all{background:var(--accent-wash-soft);border-color:#33406A}
 </style>
 </head>
 <body>
@@ -151,6 +166,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 </a>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script>
 (function(){
 "use strict";
@@ -176,7 +192,8 @@ var ICO = {
   play: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#2DD4BF" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
   playsm: '<svg viewBox="0 0 24 24" width="10" height="10" fill="#2DD4BF" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
   linksm: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
-  warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+  warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#C7CCDA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
 };
 
 function esc(s){
@@ -198,6 +215,170 @@ function domainOf(url){
   try{ return new URL(url).hostname.replace(/^www\./,''); }catch(e){ return url; }
 }
 function isVideo(mt){ return /video|reel/i.test(mt||''); }
+var ACCENT_MAP = {'á':'a','à':'a','â':'a','ã':'a','ä':'a','é':'e','è':'e','ê':'e','ë':'e','í':'i','ì':'i','î':'i','ï':'i','ó':'o','ò':'o','ô':'o','õ':'o','ö':'o','ú':'u','ù':'u','û':'u','ü':'u','ç':'c','ñ':'n'};
+function slugify(s){
+  var str = String(s||'').toLowerCase().split('').map(function(ch){ return ACCENT_MAP[ch] || ch; }).join('');
+  return str.replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'item';
+}
+function hexRgb(hex){
+  hex = String(hex||'#000000').replace('#','');
+  if(hex.length===3){ hex = hex.split('').map(function(c){return c+c;}).join(''); }
+  var num = parseInt(hex,16) || 0;
+  return [(num>>16)&255,(num>>8)&255,num&255];
+}
+function todayStr(){
+  var d = new Date();
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
+function todayFileStamp(){
+  var d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// ---------- PDF picker (modal) ----------
+function closePicker(){
+  var ov = document.getElementById('pdf-picker-overlay');
+  if(ov) ov.remove();
+  document.removeEventListener('keydown', onPickerKey);
+}
+function onPickerKey(e){ if(e.key === 'Escape') closePicker(); }
+
+function openPdfPicker(title, sub, options){
+  closePicker();
+  var ov = document.createElement('div');
+  ov.id = 'pdf-picker-overlay';
+  ov.className = 'modal-overlay';
+  var optsHtml = options.map(function(o, i){
+    return '<button class="modal-opt'+(o.all?' all':'')+'" data-i="'+i+'" type="button"><b>'+esc(o.label)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</button>';
+  }).join('');
+  ov.innerHTML = '<div class="modal-card">'
+    + '<div class="modal-card-head"><div><h3>'+esc(title)+'</h3>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'
+    + '<button class="modal-close" id="pdf-picker-close" type="button" aria-label="Fechar">'+ICO.close+'</button></div>'
+    + '<div class="modal-opts">'+optsHtml+'</div>'
+    + '</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target === ov) closePicker(); });
+  document.getElementById('pdf-picker-close').addEventListener('click', closePicker);
+  Array.prototype.forEach.call(ov.querySelectorAll('.modal-opt'), function(btn){
+    btn.addEventListener('click', function(){
+      var i = Number(btn.getAttribute('data-i'));
+      closePicker();
+      options[i].onSelect();
+    });
+  });
+  document.addEventListener('keydown', onPickerKey);
+}
+
+function openHomePdfPicker(){
+  var options = [{ all:true, label:'Todos os temas', sub: state.links.length+' link'+(state.links.length===1?'':'s')+' no total', onSelect:function(){ generatePdf({type:'all'}); } }];
+  state.categories.forEach(function(c){
+    var n = linksByCategory(c.id).length;
+    if(n===0) return;
+    options.push({ label:c.name, sub:n+' link'+(n===1?'':'s'), onSelect:function(){ generatePdf({type:'category', catId:c.id}); } });
+  });
+  openPdfPicker('Gerar PDF', 'Escolha o que entra no arquivo', options);
+}
+
+function openTemaPdfPicker(catId){
+  var cat = state.categories.find(function(c){ return c.id === catId; });
+  if(!cat) return;
+  var items = linksByCategory(catId);
+  var options = [{ all:true, label:'Tema inteiro — '+cat.name, sub: items.length+' link'+(items.length===1?'':'s'), onSelect:function(){ generatePdf({type:'category', catId:catId}); } }];
+  items.forEach(function(l){
+    options.push({ label: l.title || '(sem título)', sub: domainOf(l.raw_url), onSelect:function(){ generatePdf({type:'link', linkId:l.id}); } });
+  });
+  openPdfPicker('Gerar PDF', 'Tema inteiro ou um assunto específico', options);
+}
+
+// ---------- PDF generation (real downloadable file, via jsPDF) ----------
+function buildReportScope(scope){
+  if(scope.type === 'category'){
+    var cat = state.categories.find(function(c){ return c.id === scope.catId; });
+    return { title: cat ? cat.name : 'Tema', cats: cat ? [cat] : [], itemsOf: function(c){ return linksByCategory(c.id); }, filename: 'central-de-links-'+slugify(cat?cat.name:'tema') };
+  }
+  if(scope.type === 'link'){
+    var link = state.links.find(function(l){ return l.id === scope.linkId; });
+    var cat2 = link ? state.categories.find(function(c){ return c.id === link.category_id; }) : null;
+    return { title: (link?(link.title||'Link'):'Link')+(cat2?' — '+cat2.name:''), cats: cat2 ? [cat2] : [], itemsOf: function(){ return link ? [link] : []; }, filename: 'central-de-links-'+slugify(link?link.title:'item') };
+  }
+  // 'all'
+  return { title: 'Relatório completo', cats: state.categories, itemsOf: function(c){ return linksByCategory(c.id); }, filename: 'central-de-links-completo' };
+}
+
+function generatePdf(scope){
+  if(!window.jspdf){ alert('Não consegui carregar o gerador de PDF. Recarregue a página e tente de novo.'); return; }
+  var rep = buildReportScope(scope);
+  var doc = new window.jspdf.jsPDF({ unit:'pt', format:'a4' });
+  var pageW = doc.internal.pageSize.getWidth();
+  var pageH = doc.internal.pageSize.getHeight();
+  var margin = 50;
+  var contentW = pageW - margin*2;
+  var y = margin;
+
+  function ensure(h){ if(y + h > pageH - margin){ doc.addPage(); y = margin; } }
+  function color(c){ doc.setTextColor.apply(doc, hexRgb(c)); }
+  function text(str, size, opts){
+    opts = opts || {};
+    doc.setFont('helvetica', opts.bold ? 'bold' : (opts.italic ? 'italic' : 'normal'));
+    doc.setFontSize(size);
+    color(opts.color || '#1A1D24');
+    var indent = opts.indent || 0;
+    var lines = doc.splitTextToSize(String(str), contentW - indent);
+    lines.forEach(function(line){
+      ensure(size*1.42);
+      doc.text(line, margin + indent, y);
+      y += size*1.42;
+    });
+  }
+  function spacer(h){ y += h; }
+  function rule(){ ensure(8); doc.setDrawColor.apply(doc, hexRgb('#E3E6EC')); doc.line(margin, y, pageW-margin, y); y += 14; }
+
+  // header
+  text('CENTRAL DE LINKS', 9, { bold:true, color:'#5A6072' });
+  spacer(4);
+  text(rep.title, 20, { bold:true, color:'#1A1D24' });
+  spacer(2);
+  text('Gerado em '+todayStr(), 9, { color:'#5A6072' });
+  spacer(8);
+  rule();
+
+  var catsWithItems = rep.cats.filter(function(c){ return rep.itemsOf(c).length > 0; });
+  if(catsWithItems.length === 0){
+    text('Sem conteúdo processado ainda pra este recorte.', 11, { color:'#5A6072' });
+  }
+
+  catsWithItems.forEach(function(c, idx){
+    var items = rep.itemsOf(c);
+    ensure(28);
+    text((idx+1)+'. '+c.name+'  ('+items.length+' link'+(items.length===1?'':'s')+')', 13, { bold:true });
+    spacer(6);
+    items.forEach(function(l, i){
+      ensure(18);
+      text((idx+1)+'.'+(i+1)+' '+(l.title||'(sem título)'), 11.5, { bold:true });
+      text((l.media_type||'link')+' · '+domainOf(l.raw_url)+' · '+todayFromIso(l.processed_at), 9, { color:'#5A6072' });
+      if(l.caption){ text('"'+l.caption+'"', 9.5, { italic:true, color:'#3A3F4B', indent:8 }); }
+      if(l.summary){ text('Resumo: '+l.summary, 10, { color:'#1A1D24' }); }
+      if(!l.caption && !l.summary){ text('O conteúdo não pôde ser lido automaticamente.', 9, { italic:true, color:'#A5760B' }); }
+      if(l.cited_links && l.cited_links.length){
+        text('Links mencionados:', 9.5, { bold:true, color:'#5A6072' });
+        l.cited_links.forEach(function(cl){
+          text('→ '+(cl.label||domainOf(cl.url))+' — '+cl.url, 9, { color:'#3355CC', indent:8 });
+        });
+      }
+      text('Original: '+l.raw_url, 8.5, { color:'#7A8194' });
+      spacer(8);
+      if(i < items.length-1){ rule(); }
+    });
+    spacer(12);
+  });
+
+  doc.save(rep.filename+'-'+todayFileStamp()+'.pdf');
+}
+function todayFromIso(iso){
+  if(!iso) return 'data desconhecida';
+  var d = new Date(iso);
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
 
 // ---------- data ----------
 function loadData(){
@@ -257,11 +438,13 @@ function renderHome(){
       + '<span class="muted">Lendo direto do Supabase</span><span class="sep"></span>'
       + '<span class="muted">'+totalLinks+' links · '+totalCited+' links citados</span></div>';
 
-    html += '<a href="#/relatorio" class="report-cta">'
+    html += '<div class="report-cta">'
+      + '<a href="#/relatorio" style="display:flex;align-items:center;gap:12px;flex-grow:1;min-width:0">'
       + '<div class="ic">'+ICO.report+'</div>'
       + '<div class="txt"><b>Relatório completo</b><small>'+state.categories.length+' temas · '+totalLinks+' links · resumos e links citados</small></div>'
-      + '<span class="btn-accent">'+ICO.pdfsm+'Ver relatório</span>'
-      + '</a>';
+      + '</a>'
+      + '<button class="btn-accent" id="btn-pdf-home" type="button">'+ICO.pdfsm+'Gerar PDF</button>'
+      + '</div>';
 
     html += '<div>';
     html += '<div class="section-label" style="margin-bottom:10px">Temas</div>';
@@ -301,6 +484,8 @@ function renderHome(){
       if(newInput){ newInput.focus(); newInput.setSelectionRange(caret, caret); }
     });
   }
+  var btnPdfHome = document.getElementById('btn-pdf-home');
+  if(btnPdfHome){ btnPdfHome.addEventListener('click', openHomePdfPicker); }
 }
 
 function recentCard(l){
@@ -345,7 +530,8 @@ function renderTema(catId){
     + '<div class="meta">'+items.length+' link'+(items.length===1?'':'s')+' · '+videoN+' vídeo'+(videoN===1?'':'s')+' · '+citedTotal+' link'+(citedTotal===1?'':'s')+' citado'+(citedTotal===1?'':'s')+' no total</div>'
     + '</div>';
 
-  html += '<a href="#/relatorio/'+catId+'" class="btn-pdf">'+ICO.pdfsm+'Ver relatório deste tema</a>';
+  html += '<button class="btn-pdf" id="btn-pdf-tema" type="button" data-cat="'+esc(catId)+'">'+ICO.pdfsm+'Gerar PDF</button>';
+  html += '<a href="#/relatorio/'+catId+'" style="font-size:11.5px;color:var(--ink-mute);text-align:center;margin-top:-8px">Ver prévia deste tema</a>';
 
   if(items.length === 0){
     html += stateBlock('Nenhum link neste tema ainda.');
@@ -354,6 +540,9 @@ function renderTema(catId){
   }
 
   temaEl.innerHTML = html;
+
+  var btnPdfTema = document.getElementById('btn-pdf-tema');
+  if(btnPdfTema){ btnPdfTema.addEventListener('click', function(){ openTemaPdfPicker(catId); }); }
 }
 
 function itemCard(l){
@@ -403,8 +592,9 @@ function renderRelatorio(onlyCatId){
   var dateStr = String(today.getDate()).padStart(2,'0')+'/'+String(today.getMonth()+1).padStart(2,'0')+'/'+today.getFullYear();
 
   var html = '';
-  html += '<div class="topbar"><a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a></div>';
-  html += '<div class="report-note">Esta é uma prévia de leitura do relatório, gerada ao vivo com seus dados atuais. O download em <b>arquivo .pdf</b> não roda dentro deste preview — se quiser o arquivo pra imprimir ou enviar, é só pedir que eu gero na hora.</div>';
+  html += '<div class="topbar"><a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a>'
+    + '<button class="btn-accent" id="btn-pdf-relatorio" type="button" style="height:40px">'+ICO.pdfsm+'Baixar PDF</button></div>';
+  html += '<div class="report-note">Esta é uma prévia de leitura, gerada ao vivo com seus dados atuais. Toque em <b>Baixar PDF</b> acima pra gerar o arquivo de verdade.</div>';
 
   html += '<div class="report-wrap"><div class="paper">';
   html += '<div class="paper-head">'
@@ -443,6 +633,13 @@ function renderRelatorio(onlyCatId){
 
   html += '</div></div>';
   relatorioEl.innerHTML = html;
+
+  var btnPdfRel = document.getElementById('btn-pdf-relatorio');
+  if(btnPdfRel){
+    btnPdfRel.addEventListener('click', function(){
+      generatePdf(onlyCatId ? { type:'category', catId:onlyCatId } : { type:'all' });
+    });
+  }
 }
 
 // ---------- router ----------
