@@ -165,6 +165,16 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .danger-zone .txt{font-size:11.5px;color:#F0A6A6;line-height:1.4}
 .danger-zone .txt b{color:#FF8B8B;display:block;font-size:12.5px;margin-bottom:1px}
 .danger-btn{height:38px;padding:0 13px;gap:6px;font-size:11.5px;font-weight:700;color:#FF8B8B;white-space:nowrap}
+
+/* carrossel de imagens */
+.img-carousel{position:relative;margin:2px -2px 0}
+.img-carousel .strip{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:6px;border-radius:11px;-webkit-overflow-scrolling:touch}
+.img-carousel .strip::-webkit-scrollbar{display:none}
+.img-carousel .strip img{scroll-snap-align:start;flex:0 0 100%;width:100%;max-height:340px;object-fit:cover;border-radius:11px;background:#1A1F2B}
+.img-carousel .count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;pointer-events:none}
+.btn-download-imgs{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:8px;border-radius:11px;background:var(--card);border:1px solid var(--card-border);color:var(--accent);font-size:11.5px;font-weight:700}
+.btn-download-imgs:hover{border-color:var(--accent)}
+.btn-download-imgs[disabled]{opacity:0.55;pointer-events:none}
 </style>
 </head>
 <body>
@@ -209,7 +219,8 @@ var ICO = {
   linksm: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
   warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#C7CCDA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
+  trash: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+  download: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>'
 };
 
 function esc(s){
@@ -453,11 +464,65 @@ function deleteAllFlow(){
   callDelete('all', null).then(afterDelete).catch(function(err){ alert(err.message || 'Erro ao excluir.'); });
 }
 
+// ---------- carrossel de imagens (fotos reais mandadas pelo Telegram) ----------
+function wireImageCarousels(root){
+  root.querySelectorAll('.img-carousel').forEach(function(wrap){
+    var strip = wrap.querySelector('.strip');
+    var countEl = wrap.querySelector('.count');
+    if(!strip || !countEl) return;
+    var total = strip.children.length;
+    strip.addEventListener('scroll', function(){
+      var idx = Math.round(strip.scrollLeft / (strip.clientWidth || 1)) + 1;
+      idx = Math.max(1, Math.min(total, idx));
+      countEl.textContent = idx+'/'+total;
+    });
+  });
+}
+
+async function downloadImages(urls, title){
+  var base = slugify(title || 'imagem') || 'imagem';
+  for(var i = 0; i < urls.length; i++){
+    try{
+      var res = await fetch(urls[i]);
+      var blob = await res.blob();
+      var ext = (blob.type && blob.type.indexOf('png') !== -1) ? 'png' : (blob.type && blob.type.indexOf('webp') !== -1) ? 'webp' : 'jpg';
+      var blobUrl = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = urls.length > 1 ? (base+'-'+(i+1)+'.'+ext) : (base+'.'+ext);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function(u){ return function(){ URL.revokeObjectURL(u); }; }(blobUrl), 4000);
+    }catch(e){
+      console.error('falha ao baixar imagem', urls[i], e);
+    }
+    if(i < urls.length-1){ await new Promise(function(r){ setTimeout(r, 350); }); }
+  }
+}
+
+function wireImageDownloadButtons(root){
+  root.querySelectorAll('.btn-download-imgs').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var urls;
+      try{ urls = JSON.parse(btn.getAttribute('data-download-urls')||'[]'); }catch(e){ urls = []; }
+      if(!urls.length) return;
+      btn.disabled = true;
+      var originalHtml = btn.innerHTML;
+      btn.innerHTML = ICO.download + 'Baixando...';
+      downloadImages(urls, btn.getAttribute('data-download-title')).then(function(){
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      });
+    });
+  });
+}
+
 // ---------- data ----------
 function loadData(){
   return Promise.all([
     sb.from('categories').select('id,name,color,created_at').order('created_at'),
-    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,cited_links(id,url,label)')
+    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,cited_links(id,url,label),link_images(id,url,position)')
       .eq('status','processed').order('processed_at',{ascending:false})
   ]).then(function(results){
     var catRes = results[0], linkRes = results[1];
@@ -589,7 +654,12 @@ function recentCard(l){
   var catName = cat ? cat.name : 'Sem tema';
   var catColor = cat ? cat.color : '#7C9CFF';
   var citedN = l.cited_links ? l.cited_links.length : 0;
-  var thumb = isVideo(l.media_type)
+  var firstImg = (l.link_images && l.link_images.length)
+    ? l.link_images.slice().sort(function(a,b){return a.position-b.position;})[0].url
+    : null;
+  var thumb = firstImg
+    ? '<img src="'+esc(firstImg)+'" loading="lazy" alt="" style="width:62px;height:62px;border-radius:9px;object-fit:cover;flex-shrink:0;background:#1A1F2B">'
+    : isVideo(l.media_type)
     ? '<div class="thumb-placeholder">'+ICO.play+'</div>'
     : '<div class="thumb-placeholder" style="color:var(--ink-faint);font-size:9px;text-align:center;padding:4px">'+esc((l.media_type||'link').toUpperCase())+'</div>';
   var sub = citedN ? (citedN+' link'+(citedN===1?'':'s')+' citado'+(citedN===1?'':'s')) : domainOf(l.raw_url);
@@ -649,6 +719,9 @@ function renderTema(catId){
       deleteLinkFlow(btn.getAttribute('data-link-id'), btn.getAttribute('data-title'));
     });
   });
+
+  wireImageCarousels(temaEl);
+  wireImageDownloadButtons(temaEl);
 }
 
 function itemCard(l){
@@ -656,13 +729,24 @@ function itemCard(l){
     ? '<div class="badge-video">'+ICO.playsm+esc((l.media_type||'vídeo').toUpperCase())+'</div>'
     : '<div class="badge-type">'+esc((l.media_type||'link').toUpperCase())+'</div>';
 
-  var img = '';
-  // sem armazenamento de imagem própria ainda — thumbnail fica pro bot preencher no futuro (campo screenshot_url)
+  var images = (l.link_images || []).slice().sort(function(a,b){ return a.position-b.position; });
 
   var html = '<div class="item-card">';
   html += '<div class="item-top">'+typeBadge+'<span class="item-author">'+esc(domainOf(l.raw_url))+' · '+esc(timeAgo(l.processed_at))+'</span>'
     + '<button class="item-del" type="button" data-link-id="'+esc(l.id)+'" data-title="'+esc(l.title||'')+'" aria-label="Excluir link">'+ICO.trash+'</button>'
     + '</div>';
+
+  if(images.length){
+    html += '<div class="img-carousel">';
+    html += '<div class="strip">';
+    images.forEach(function(im){ html += '<img src="'+esc(im.url)+'" loading="lazy" alt="">'; });
+    html += '</div>';
+    if(images.length > 1){ html += '<div class="count">1/'+images.length+'</div>'; }
+    html += '</div>';
+    html += '<button class="btn-download-imgs" type="button" data-download-urls="'+esc(JSON.stringify(images.map(function(im){return im.url;})))+'" data-download-title="'+esc(l.title||'imagem')+'">'
+      + ICO.download + (images.length>1 ? 'Baixar '+images.length+' imagens' : 'Baixar imagem')
+      + '</button>';
+  }
   if(l.title){
     html += '<div><div class="item-label">TÍTULO</div><div class="item-title">'+esc(l.title)+'</div></div>';
   }
