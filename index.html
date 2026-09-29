@@ -172,6 +172,10 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .img-carousel .strip::-webkit-scrollbar{display:none}
 .img-carousel .strip img{scroll-snap-align:start;flex:0 0 100%;width:100%;max-height:340px;object-fit:cover;border-radius:11px;background:#1A1F2B}
 .img-carousel .count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;pointer-events:none}
+.thumb-row{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px}
+.thumb-btn{width:100%;aspect-ratio:1;border-radius:9px;padding:0;border:2px solid transparent;background:#1A1F2B;overflow:hidden}
+.thumb-btn img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb-btn.active{border-color:var(--accent)}
 .btn-download-imgs{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:8px;border-radius:11px;background:var(--card);border:1px solid var(--card-border);color:var(--accent);font-size:11.5px;font-weight:700}
 .btn-download-imgs:hover{border-color:var(--accent)}
 .btn-download-imgs[disabled]{opacity:0.55;pointer-events:none}
@@ -464,18 +468,40 @@ function deleteAllFlow(){
   callDelete('all', null).then(afterDelete).catch(function(err){ alert(err.message || 'Erro ao excluir.'); });
 }
 
-// ---------- carrossel de imagens (fotos reais mandadas pelo Telegram) ----------
+// ---------- carrossel de imagens (fotos reais do post) ----------
 function wireImageCarousels(root){
   root.querySelectorAll('.img-carousel').forEach(function(wrap){
     var strip = wrap.querySelector('.strip');
     var countEl = wrap.querySelector('.count');
-    if(!strip || !countEl) return;
+    if(!strip) return;
     var total = strip.children.length;
+    var thumbRow = wrap.parentElement ? wrap.parentElement.querySelector('.thumb-row') : null;
+
+    function setActive(idx){
+      if(countEl) countEl.textContent = (idx+1)+'/'+total;
+      if(thumbRow){
+        thumbRow.querySelectorAll('.thumb-btn').forEach(function(btn,i){
+          btn.classList.toggle('active', i===idx);
+        });
+      }
+    }
+
     strip.addEventListener('scroll', function(){
-      var idx = Math.round(strip.scrollLeft / (strip.clientWidth || 1)) + 1;
-      idx = Math.max(1, Math.min(total, idx));
-      countEl.textContent = idx+'/'+total;
+      var idx = Math.round(strip.scrollLeft / (strip.clientWidth || 1));
+      idx = Math.max(0, Math.min(total-1, idx));
+      setActive(idx);
     });
+
+    if(thumbRow){
+      thumbRow.querySelectorAll('.thumb-btn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var idx = parseInt(btn.getAttribute('data-idx'), 10) || 0;
+          var target = strip.children[idx];
+          if(target) strip.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+          setActive(idx);
+        });
+      });
+    }
   });
 }
 
@@ -739,10 +765,17 @@ function itemCard(l){
   if(images.length){
     html += '<div class="img-carousel">';
     html += '<div class="strip">';
-    images.forEach(function(im){ html += '<img src="'+esc(im.url)+'" loading="lazy" alt="">'; });
+    images.forEach(function(im,i){ html += '<img src="'+esc(im.url)+'" loading="lazy" alt="" data-idx="'+i+'">'; });
     html += '</div>';
     if(images.length > 1){ html += '<div class="count">1/'+images.length+'</div>'; }
     html += '</div>';
+    if(images.length > 1){
+      html += '<div class="thumb-row">';
+      images.forEach(function(im,i){
+        html += '<button class="thumb-btn'+(i===0?' active':'')+'" type="button" data-idx="'+i+'"><img src="'+esc(im.url)+'" loading="lazy" alt=""></button>';
+      });
+      html += '</div>';
+    }
     html += '<button class="btn-download-imgs" type="button" data-download-urls="'+esc(JSON.stringify(images.map(function(im){return im.url;})))+'" data-download-title="'+esc(l.title||'imagem')+'">'
       + ICO.download + (images.length>1 ? 'Baixar '+images.length+' imagens' : 'Baixar imagem')
       + '</button>';
