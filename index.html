@@ -108,6 +108,19 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .item-title{font-size:15.5px;font-weight:700;color:var(--ink-strong);line-height:1.3;margin-top:3px}
 .item-caption{font-size:12.5px;color:#AEB4C2;line-height:1.5;margin-top:4px;border-left:2px solid #2A3040;padding-left:10px}
 .item-summary{font-size:13px;color:#E0E3EA;line-height:1.5;margin-top:4px}
+.vid-status{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#2DD4BF;background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.22);border-radius:10px;padding:7px 10px}
+.vid-status.warn{color:#FBBF24;background:rgba(251,191,36,0.08);border-color:rgba(251,191,36,0.25)}
+.tool-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tool-chip{font-size:11.5px;font-weight:600;color:#C7CCDA;background:#1E2430;border-radius:999px;padding:4px 9px}
+.vid-details{border:1px solid var(--card-border-soft);border-radius:12px;background:rgba(255,255,255,0.02)}
+.vid-details>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12px;font-weight:700;color:#C7CCDA;display:flex;justify-content:space-between;align-items:center}
+.vid-details>summary::-webkit-details-marker{display:none}
+.vid-details>summary::after{content:"+";font-size:16px;color:var(--ink-faint)}
+.vid-details[open]>summary::after{content:"–"}
+.vid-body{padding:0 12px 12px;font-size:12.5px;line-height:1.55;color:#D5D9E3;white-space:pre-wrap;max-height:340px;overflow:auto}
+.vid-body ul{margin:0;padding-left:18px;white-space:normal}
+.vid-body li{margin:3px 0}
+.vid-copy{margin:0 12px 12px;font-size:11.5px;font-weight:700;color:#7C9CFF;background:none;border:1px solid rgba(124,156,255,0.35);border-radius:8px;padding:6px 10px;cursor:pointer}
 .item-note{display:flex;align-items:center;gap:6px;background:var(--warn-wash);border-radius:9px;padding:9px 11px;font-size:11.5px;color:var(--warn)}
 .cited-list{display:flex;flex-direction:column;gap:6px}
 .cited-link{display:flex;align-items:center;gap:8px;background:var(--accent-wash-soft);border-radius:9px;padding:9px 11px;font-size:12px;font-weight:600;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -548,7 +561,7 @@ function wireImageDownloadButtons(root){
 function loadData(){
   return Promise.all([
     sb.from('categories').select('id,name,color,created_at').order('created_at'),
-    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,cited_links(id,url,label),link_images(id,url,position)')
+    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,video_status,screen_text,tools_cited,cited_links(id,url,label),link_images(id,url,position)')
       .eq('status','processed').order('processed_at',{ascending:false})
   ]).then(function(results){
     var catRes = results[0], linkRes = results[1];
@@ -748,6 +761,57 @@ function renderTema(catId){
 
   wireImageCarousels(temaEl);
   wireImageDownloadButtons(temaEl);
+  wireTranscripts(temaEl);
+}
+
+// Análise do vídeo: status, ferramentas citadas, textos da tela e transcrição (carregada sob demanda).
+function videoSection(l){
+  var st = l.video_status;
+  if(!st){ return ''; }
+  var html = '';
+  if(st === 'pending' || st === 'downloading' || st === 'analyzing'){
+    html += '<div class="vid-status"><span>🎬</span><span>'+(st==='pending' ? 'Na fila para análise do vídeo (fala e textos da tela)' : 'Analisando o vídeo agora…')+'</span></div>';
+  } else if(st === 'failed' || st === 'no_video'){
+    html += '<div class="vid-status warn"><span>⚠️</span><span>Vídeo não disponível para análise — resumo baseado na legenda.</span></div>';
+  }
+  if(st !== 'done'){ return html; }
+  var tools = Array.isArray(l.tools_cited) ? l.tools_cited : [];
+  var screen = Array.isArray(l.screen_text) ? l.screen_text : [];
+  if(tools.length){
+    html += '<div><div class="item-label">FERRAMENTAS CITADAS</div><div class="tool-chips">'
+      + tools.map(function(t){ return '<span class="tool-chip">'+esc(t)+'</span>'; }).join('')
+      + '</div></div>';
+  }
+  if(screen.length){
+    html += '<details class="vid-details"><summary>Textos que aparecem na tela ('+screen.length+')</summary>'
+      + '<div class="vid-body"><ul>'+screen.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul></div></details>';
+  }
+  html += '<details class="vid-details" data-transcript-id="'+esc(l.id)+'"><summary>Transcrição da fala</summary>'
+    + '<div class="vid-body">Abrindo…</div></details>';
+  return html;
+}
+
+function wireTranscripts(root){
+  root.querySelectorAll('details[data-transcript-id]').forEach(function(d){
+    d.addEventListener('toggle', function(){
+      if(!d.open || d.getAttribute('data-loaded')){ return; }
+      var body = d.querySelector('.vid-body');
+      body.textContent = 'Carregando transcrição…';
+      sb.from('links').select('transcript').eq('id', d.getAttribute('data-transcript-id')).maybeSingle()
+        .then(function(res){
+          var t = res && res.data && res.data.transcript;
+          if(res.error || !t){ body.textContent = res.error ? 'Não consegui carregar agora.' : 'Sem fala neste vídeo.'; return; }
+          d.setAttribute('data-loaded','1');
+          body.textContent = t;
+          var btn = document.createElement('button');
+          btn.type = 'button'; btn.className = 'vid-copy'; btn.textContent = 'Copiar transcrição';
+          btn.addEventListener('click', function(){
+            (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function(){ btn.textContent = 'Copiado ✓'; }, function(){ btn.textContent = 'Não foi possível copiar'; });
+          });
+          d.appendChild(btn);
+        });
+    });
+  });
 }
 
 function itemCard(l){
@@ -792,6 +856,7 @@ function itemCard(l){
   if(!l.caption && !l.summary){
     html += '<div class="item-note">'+ICO.warn+'<span>O conteúdo não pôde ser lido automaticamente.</span></div>';
   }
+  html += videoSection(l);
   if(l.cited_links && l.cited_links.length){
     html += '<div class="cited-list"><div class="item-label">LINKS MENCIONADOS</div>';
     l.cited_links.forEach(function(c){
