@@ -192,6 +192,37 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .btn-download-imgs{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;margin-top:8px;border-radius:11px;background:var(--card);border:1px solid var(--card-border);color:var(--accent);font-size:11.5px;font-weight:700}
 .btn-download-imgs:hover{border-color:var(--accent)}
 .btn-download-imgs[disabled]{opacity:0.55;pointer-events:none}
+
+/* revisão de categorias */
+.review-cta{display:flex;align-items:center;gap:10px;background:var(--warn-wash);border:1px solid rgba(251,191,36,0.35);border-radius:14px;padding:12px 14px;color:var(--warn);font-size:12.5px;font-weight:700}
+.review-cta span{flex-grow:1}
+.review-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--warn);background:var(--warn-wash);border-radius:999px;padding:3px 8px}
+.review-card{display:flex;flex-direction:column;gap:9px;background:var(--card);border:1px solid var(--card-border-soft);border-radius:16px;padding:14px}
+.review-card .t{font-size:13.5px;font-weight:700;color:var(--ink-strong);line-height:1.3}
+.review-card .why{font-size:11.5px;color:var(--warn);line-height:1.4}
+.review-card .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn-soft{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 12px;border-radius:10px;background:#161B26;border:1px solid var(--card-border);color:var(--ink);font-size:12px;font-weight:700}
+.btn-soft.primary{background:var(--accent);border-color:var(--accent);color:#0B0E14}
+.btn-soft.danger{color:#EF4444}
+.btn-soft[disabled]{opacity:0.5;pointer-events:none}
+.sel{height:38px;border-radius:10px;background:#161B26;border:1px solid var(--card-border);color:var(--ink);font-size:12px;padding:0 8px;font-family:inherit;max-width:100%}
+/* configurações / chaves */
+.key-card{display:flex;flex-direction:column;gap:8px;background:var(--card);border:1px solid var(--card-border-soft);border-radius:14px;padding:13px}
+.key-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.key-top b{font-size:13.5px;color:var(--ink-strong)}
+.key-mask{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink-faint)}
+.pill{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px}
+.pill.ok{background:rgba(52,211,153,0.12);color:var(--good)}
+.pill.warn{background:var(--warn-wash);color:var(--warn)}
+.pill.bad{background:rgba(239,68,68,0.12);color:#EF4444}
+.pill.off{background:#1A1F2B;color:var(--ink-faint)}
+.key-meta{font-size:11px;color:var(--ink-faint);line-height:1.45;word-break:break-word}
+.form-card{display:flex;flex-direction:column;gap:8px;background:#141A28;border:1px solid #2A3350;border-radius:14px;padding:14px}
+.inp{height:42px;border-radius:10px;background:var(--bg);border:1px solid var(--card-border);color:var(--ink);font-size:13px;padding:0 12px;font-family:inherit;width:100%}
+.hint{font-size:11.5px;color:var(--ink-mute);line-height:1.5}
+.msg{font-size:12px;line-height:1.45;border-radius:10px;padding:9px 11px}
+.msg.ok{background:rgba(52,211,153,0.1);color:var(--good)}
+.msg.err{background:rgba(239,68,68,0.1);color:#F87171}
 </style>
 </head>
 <body>
@@ -200,6 +231,8 @@ h1,h2,h3{text-wrap:balance;margin:0}
   <div id="home" class="screen"></div>
   <div id="tema" class="screen hidden"></div>
   <div id="relatorio" class="screen hidden"></div>
+  <div id="revisar" class="screen hidden"></div>
+  <div id="config" class="screen hidden"></div>
 </div>
 
 <a class="fab" href="https://t.me/WillexLinkBot" target="_blank" rel="noopener" aria-label="Adicionar link pelo Telegram">
@@ -216,10 +249,13 @@ var SUPABASE_URL = "https://vuakukopbjvdsczhhzjj.supabase.co";
 var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1YWt1a29wYmp2ZHNjemhoempqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MDM4NDcsImV4cCI6MjEwNjE3OTg0N30.gVCtEcYln55EF88JDIy4qndLyN32YjJ_SskANF54vJw";
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 var DELETE_FN_URL = SUPABASE_URL + "/functions/v1/manage-delete";
+var ADMIN_FN_URL = SUPABASE_URL + "/functions/v1/manage-admin";
 
 var homeEl = document.getElementById('home');
 var temaEl = document.getElementById('tema');
 var relatorioEl = document.getElementById('relatorio');
+var revisarEl = document.getElementById('revisar');
+var configEl = document.getElementById('config');
 
 var state = { categories: [], links: [], loaded: false, error: null };
 
@@ -237,7 +273,8 @@ var ICO = {
   warn: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--warn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#C7CCDA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   trash: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
-  download: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>'
+  download: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M4 19h16"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#C7CCDA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
 };
 
 function esc(s){
@@ -401,7 +438,7 @@ function generatePdf(scope){
       text((idx+1)+'.'+(i+1)+' '+(l.title||'(sem título)'), 11.5, { bold:true });
       text((l.media_type||'link')+' · '+domainOf(l.raw_url)+' · '+todayFromIso(l.processed_at), 9, { color:'#5A6072' });
       if(l.caption){ text('"'+l.caption+'"', 9.5, { italic:true, color:'#3A3F4B', indent:8 }); }
-      if(l.summary){ text('Resumo: '+l.summary, 10, { color:'#1A1D24' }); }
+      if(l.summary){ text((l.summary_inferred ? 'Resumo estimado (conteúdo não lido): ' : 'Resumo: ')+l.summary, 10, { color:'#1A1D24' }); }
       if(!l.caption && !l.summary){ text('O conteúdo não pôde ser lido automaticamente.', 9, { italic:true, color:'#A5760B' }); }
       if(l.cited_links && l.cited_links.length){
         text('Links mencionados:', 9.5, { bold:true, color:'#5A6072' });
@@ -428,9 +465,35 @@ function todayFromIso(iso){
 function getPin(){
   var pin = sessionStorage.getItem('cdl_pin');
   if(pin) return pin;
-  pin = window.prompt('Digite o PIN de exclusão pra confirmar:');
+  pin = window.prompt('Digite o PIN do app pra confirmar:');
   if(pin) sessionStorage.setItem('cdl_pin', pin);
   return pin;
+}
+
+// Trata 401 (PIN errado) e 429 (bloqueado por tentativas) do mesmo jeito nas duas funções.
+function pinError(res){
+  return res.json().catch(function(){ return {}; }).then(function(j){
+    sessionStorage.removeItem('cdl_pin');
+    throw new Error(j.error || (res.status === 429 ? 'Muitas tentativas erradas. Aguarde 15 minutos.' : 'PIN incorreto.'));
+  });
+}
+
+// Painel do app (chaves de API e revisão), protegido pelo mesmo PIN.
+function callAdmin(action, payload){
+  var pin = getPin();
+  if(!pin) return Promise.reject(new Error('Cancelado — PIN não informado.'));
+  var body = Object.assign({ action: action }, payload || {});
+  return fetch(ADMIN_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-pin': pin },
+    body: JSON.stringify(body)
+  }).then(function(res){
+    if(res.status === 401 || res.status === 429){ return pinError(res); }
+    return res.json().catch(function(){ return {}; }).then(function(j){
+      if(!res.ok){ throw new Error(j.error || ('Falha (HTTP '+res.status+').')); }
+      return j;
+    });
+  });
 }
 
 function callDelete(type, id){
@@ -441,10 +504,7 @@ function callDelete(type, id){
     headers: { 'Content-Type': 'application/json', 'x-pin': pin },
     body: JSON.stringify({ type: type, id: id })
   }).then(function(res){
-    if(res.status === 401){
-      sessionStorage.removeItem('cdl_pin');
-      throw new Error('PIN incorreto.');
-    }
+    if(res.status === 401 || res.status === 429){ return pinError(res); }
     if(!res.ok){
       return res.json().catch(function(){ return {}; }).then(function(j){
         throw new Error(j.error || ('Falha ao excluir (HTTP '+res.status+').'));
@@ -561,7 +621,7 @@ function wireImageDownloadButtons(root){
 function loadData(){
   return Promise.all([
     sb.from('categories').select('id,name,color,created_at').order('created_at'),
-    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,video_status,screen_text,tools_cited,cited_links(id,url,label),link_images(id,url,position)')
+    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,video_status,screen_text,tools_cited,needs_review,pending_category,review_reason,category_confidence,category_locked,summary_inferred,cited_links(id,url,label),link_images(id,url,position)')
       .eq('status','processed').order('processed_at',{ascending:false})
   ]).then(function(results){
     var catRes = results[0], linkRes = results[1];
@@ -606,7 +666,13 @@ function renderHome(){
   var html = '';
   html += '<div class="topbar">'
     + '<div class="brand">'+ICO.logo+'<span>Central de Links</span></div>'
+    + '<a href="#/config" class="icon-btn" aria-label="Configurações e chaves de API">'+ICO.gear+'</a>'
     + '</div>';
+
+  var reviewN = state.links.filter(function(l){ return l.needs_review; }).length;
+  if(reviewN && !searchQuery.trim()){
+    html += '<a href="#/revisar" class="review-cta">🟡<span>'+reviewN+' link'+(reviewN===1?'':'s')+' para revisar a categoria</span>›</a>';
+  }
 
   html += '<div class="search">'+ICO.search+'<input id="search-input" type="text" placeholder="Buscar por título, tema ou resumo" value="'+esc(searchQuery)+'"></div>';
 
@@ -635,7 +701,7 @@ function renderHome(){
         + '<span class="meta">'+n+' link'+(n===1?'':'s')+(citedN?' · '+citedN+' citados':'')+'</span>'
         + '</div>';
     });
-    html += '<button class="theme-card new" disabled title="Categorias novas são criadas automaticamente quando você manda um link">'+ICO.plus+'Novo tema</button>';
+    html += '<button class="theme-card new" disabled title="Temas novos são sugeridos pela IA e aprovados por você na tela Revisar">'+ICO.plus+'Novo tema</button>';
     html += '</div></div>';
 
     if(state.categories.length){
@@ -850,10 +916,15 @@ function itemCard(l){
   if(l.caption){
     html += '<div><div class="item-label">DESCRIÇÃO DO POST</div><div class="item-caption">"'+esc(l.caption)+'"</div></div>';
   }
-  if(l.summary){
-    html += '<div><div class="item-label">RESUMO</div><div class="item-summary">'+esc(l.summary)+'</div></div>';
+  if(l.needs_review){
+    html += '<a href="#/revisar" class="review-chip">🟡 Revisar categoria'+(l.review_reason ? ' — '+esc(l.review_reason) : '')+'</a>';
   }
-  if(!l.caption && !l.summary){
+  if(l.summary){
+    html += '<div><div class="item-label">'+(l.summary_inferred ? 'RESUMO ESTIMADO' : 'RESUMO')+'</div><div class="item-summary">'+esc(l.summary)+'</div></div>';
+  }
+  if(l.summary_inferred){
+    html += '<div class="item-note">'+ICO.warn+'<span>O site não deixou ler o conteúdo; esse resumo foi deduzido pelo endereço e pelo título.</span></div>';
+  } else if(!l.caption && !l.summary){
     html += '<div class="item-note">'+ICO.warn+'<span>O conteúdo não pôde ser lido automaticamente.</span></div>';
   }
   html += videoSection(l);
@@ -910,7 +981,7 @@ function renderRelatorio(onlyCatId){
       html += '<div class="paper-item">';
       html += '<div class="t">'+(idx+1)+'.'+(i+1)+' '+esc(l.title||'(sem título)')+'</div>';
       html += '<div class="meta">'+esc((l.media_type||'link'))+' · '+esc(domainOf(l.raw_url))+'</div>';
-      if(l.summary){ html += '<div class="sum"><b>Resumo: </b>'+esc(l.summary)+'</div>'; }
+      if(l.summary){ html += '<div class="sum"><b>'+(l.summary_inferred?'Resumo estimado (conteúdo não lido): ':'Resumo: ')+'</b>'+esc(l.summary)+'</div>'; }
       if(l.cited_links && l.cited_links.length){
         html += '<div class="links"><b>Links mencionados:</b><br>' + l.cited_links.map(function(c){
           return '→ <a href="'+esc(c.url)+'" target="_blank" rel="noopener" style="color:#3355CC">'+esc(c.label||domainOf(c.url))+'</a>';
@@ -932,12 +1003,192 @@ function renderRelatorio(onlyCatId){
   }
 }
 
+// ---------- revisar categorias ----------
+function catById(id){ return state.categories.find(function(c){ return c.id === id; }); }
+
+function renderRevisar(){
+  if(!state.loaded){ revisarEl.innerHTML = stateBlock('Carregando…'); return; }
+  var items = state.links.filter(function(l){ return l.needs_review; });
+  var html = '<div class="topbar"><a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a></div>';
+  html += '<div class="tema-head"><div class="title-row"><h1>Revisar</h1></div>'
+    + '<div class="meta">A IA ficou em dúvida ou sugeriu outra categoria. Nada muda sem você decidir aqui.</div></div>';
+  if(!items.length){
+    revisarEl.innerHTML = html + stateBlock('Tudo revisado. 🎉');
+    return;
+  }
+  var opts = state.categories.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
+  items.forEach(function(l){
+    var cat = catById(l.category_id);
+    var pend = l.pending_category;
+    var pendIsNew = pend && !state.categories.some(function(c){ return c.name.toLowerCase() === pend.toLowerCase(); });
+    html += '<div class="review-card" data-id="'+esc(l.id)+'">'
+      + '<div class="t">'+esc(l.title||'(sem título)')+'</div>'
+      + '<div class="row"><span class="badge" style="background:'+esc(cat?cat.color:'#7C9CFF')+'1F;color:'+esc(cat?cat.color:'#7C9CFF')+'">Agora: '+esc(cat?cat.name:'Sem tema')+'</span>'
+      + (l.category_confidence!=null ? '<span class="recent-when">confiança '+Math.round(Number(l.category_confidence)*100)+'%</span>' : '')
+      + '</div>'
+      + (l.review_reason ? '<div class="why">'+esc(l.review_reason)+'</div>' : '')
+      + (l.summary ? '<div class="item-summary" style="font-size:12px">'+esc(l.summary.length>220 ? l.summary.slice(0,220)+'…' : l.summary)+'</div>' : '')
+      + '<div class="row">'
+      + (pend ? '<button class="btn-soft primary" data-act="accept" type="button">'+(pendIsNew?'Criar tema "'+esc(pend)+'" e mover':'Mover para "'+esc(pend)+'"')+'</button>' : '')
+      + '<button class="btn-soft" data-act="keep" type="button">Manter em '+esc(cat?cat.name:'Sem tema')+'</button>'
+      + '</div>'
+      + '<div class="row"><select class="sel" data-act="pick"><option value="">Mover para outro tema…</option>'+opts+'<option value="__new">+ Novo tema…</option></select></div>'
+      + '<div class="msg-slot"></div>'
+      + '</div>';
+  });
+  revisarEl.innerHTML = html;
+
+  revisarEl.querySelectorAll('.review-card').forEach(function(card){
+    var id = card.getAttribute('data-id');
+    var slot = card.querySelector('.msg-slot');
+    function run(action, payload){
+      card.querySelectorAll('button,select').forEach(function(b){ b.disabled = true; });
+      callAdmin(action, Object.assign({ id: id }, payload||{})).then(function(){
+        return loadData();
+      }).then(function(){ renderRevisar(); }).catch(function(err){
+        slot.innerHTML = '<div class="msg err">'+esc(err.message)+'</div>';
+        card.querySelectorAll('button,select').forEach(function(b){ b.disabled = false; });
+      });
+    }
+    card.querySelectorAll('button[data-act]').forEach(function(btn){
+      btn.addEventListener('click', function(){ run(btn.getAttribute('data-act') === 'accept' ? 'review_accept' : 'review_keep'); });
+    });
+    var sel = card.querySelector('select[data-act="pick"]');
+    sel.addEventListener('change', function(){
+      if(!sel.value) return;
+      if(sel.value === '__new'){
+        var name = window.prompt('Nome do novo tema:');
+        if(!name || !name.trim()){ sel.value = ''; return; }
+        run('review_move', { new_category: name.trim() });
+      } else {
+        run('review_move', { category_id: sel.value });
+      }
+    });
+  });
+}
+
+// ---------- configurações: chaves de API ----------
+var keysState = { list: null, error: null, busy: false, msg: null };
+
+function fmtWhen(iso){
+  if(!iso) return '';
+  var d = new Date(iso);
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+function keyPill(k){
+  if(!k.enabled) return '<span class="pill off">Desligada</span>';
+  if(k.status === 'invalid') return '<span class="pill bad">Recusada pelo Google</span>';
+  if(k.status === 'exhausted') return '<span class="pill warn">Esgotada até '+esc(fmtWhen(k.exhausted_until))+'</span>';
+  return '<span class="pill ok">Ativa</span>';
+}
+
+function loadKeys(){
+  keysState.busy = true; renderConfig();
+  return callAdmin('keys_list').then(function(j){
+    keysState.list = j.keys || []; keysState.error = null;
+  }).catch(function(err){ keysState.error = err.message; })
+    .then(function(){ keysState.busy = false; renderConfig(); });
+}
+
+function renderConfig(){
+  var html = '<div class="topbar"><a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a></div>';
+  html += '<div class="tema-head"><div class="title-row"><h1>Configurações</h1></div>'
+    + '<div class="meta">Chaves de API do Google (Gemini). O app usa a primeira ativa; quando ela esgota a cota do dia ou é recusada, passa sozinho para a próxima e te avisa no Telegram.</div></div>';
+
+  if(keysState.msg){ html += '<div class="msg '+(keysState.msg.ok?'ok':'err')+'">'+esc(keysState.msg.text)+'</div>'; }
+
+  if(keysState.list === null){
+    html += keysState.error
+      ? '<div class="msg err">'+esc(keysState.error)+'</div><button class="btn-soft" id="btn-keys-retry" type="button">Tentar de novo</button>'
+      : stateBlock(keysState.busy ? 'Carregando chaves…' : 'As chaves ficam protegidas pelo PIN do app.<br><button class="btn-soft primary" id="btn-keys-open" type="button" style="margin-top:10px">Ver chaves</button>');
+  } else {
+    html += '<div class="section-label">Chaves cadastradas ('+keysState.list.length+')</div>';
+    keysState.list.forEach(function(k, i){
+      html += '<div class="key-card" data-id="'+esc(k.id)+'">'
+        + '<div class="key-top"><b>'+(i+1)+'. '+esc(k.label)+'</b>'+keyPill(k)+'<span class="key-mask">'+esc(k.masked)+'</span></div>'
+        + '<div class="key-meta">'+Number(k.uses||0)+' uso'+(Number(k.uses)===1?'':'s')
+        + (k.last_used_at ? ' · último em '+esc(fmtWhen(k.last_used_at)) : '')
+        + (k.last_error ? '<br>Último erro ('+esc(fmtWhen(k.last_error_at))+'): '+esc(String(k.last_error).slice(0,160)) : '')
+        + '</div>'
+        + '<div class="row" style="display:flex;flex-wrap:wrap;gap:6px">'
+        + '<button class="btn-soft" data-act="test" type="button">Testar</button>'
+        + (i>0 ? '<button class="btn-soft" data-act="first" type="button">Usar primeiro</button>' : '')
+        + '<button class="btn-soft" data-act="toggle" data-enabled="'+(k.enabled?'0':'1')+'" type="button">'+(k.enabled?'Desligar':'Ligar')+'</button>'
+        + '<button class="btn-soft danger" data-act="remove" type="button">Remover</button>'
+        + '</div></div>';
+    });
+
+    html += '<div class="form-card">'
+      + '<div class="section-label">Adicionar chave</div>'
+      + '<input class="inp" id="key-label" type="text" maxlength="40" placeholder="Nome (ex.: Conta 2)">'
+      + '<input class="inp" id="key-value" type="password" autocomplete="off" placeholder="Cole a chave do Google AI Studio">'
+      + '<button class="btn-soft primary" id="btn-key-add" type="button"'+(keysState.busy?' disabled':'')+'>'+(keysState.busy?'Testando…':'Testar e salvar')+'</button>'
+      + '<div class="hint">A chave é testada com o Google antes de salvar e nunca volta inteira para o navegador. Crie em aistudio.google.com → Get API key.</div>'
+      + '</div>';
+  }
+  configEl.innerHTML = html;
+
+  var open = document.getElementById('btn-keys-open') || document.getElementById('btn-keys-retry');
+  if(open){ open.addEventListener('click', function(){ keysState.error = null; loadKeys(); }); }
+
+  function act(action, payload, okText){
+    keysState.busy = true; keysState.msg = null; renderConfig();
+    return callAdmin(action, payload).then(function(j){
+      if(j.keys) keysState.list = j.keys;
+      var t = j.test;
+      keysState.msg = t ? { ok: !!t.ok, text: t.ok ? (okText||'Pronto.')+' A chave '+t.detail+'.' : 'Salvo, mas o teste falhou: '+t.detail } : { ok: true, text: okText||'Pronto.' };
+    }).catch(function(err){ keysState.msg = { ok:false, text: err.message }; })
+      .then(function(){ keysState.busy = false; renderConfig(); });
+  }
+
+  configEl.querySelectorAll('.key-card').forEach(function(card){
+    var id = card.getAttribute('data-id');
+    card.querySelectorAll('button[data-act]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var a = btn.getAttribute('data-act');
+        if(a === 'test') act('keys_test', { id: id }, 'Teste ok.');
+        else if(a === 'first') act('keys_first', { id: id }, 'Essa chave agora é a primeira da fila.');
+        else if(a === 'toggle') act('keys_toggle', { id: id, enabled: btn.getAttribute('data-enabled') === '1' }, 'Atualizado.');
+        else if(a === 'remove'){
+          if(window.confirm('Remover esta chave do app? (Ela continua existindo na sua conta Google.)')) act('keys_remove', { id: id }, 'Chave removida.');
+        }
+      });
+    });
+  });
+
+  var add = document.getElementById('btn-key-add');
+  if(add){
+    add.addEventListener('click', function(){
+      var key = (document.getElementById('key-value').value || '').trim();
+      var label = (document.getElementById('key-label').value || '').trim();
+      if(!key){ keysState.msg = { ok:false, text:'Cole a chave antes de salvar.' }; renderConfig(); return; }
+      act('keys_add', { api_key: key, label: label }, 'Chave adicionada.');
+    });
+  }
+}
+
 // ---------- router ----------
 function route(){
   var hash = location.hash || '#/';
   homeEl.classList.add('hidden');
   temaEl.classList.add('hidden');
   relatorioEl.classList.add('hidden');
+  revisarEl.classList.add('hidden');
+  configEl.classList.add('hidden');
+
+  if(hash.indexOf('#/revisar') === 0){
+    revisarEl.classList.remove('hidden');
+    renderRevisar();
+    window.scrollTo(0,0);
+    return;
+  }
+  if(hash.indexOf('#/config') === 0){
+    configEl.classList.remove('hidden');
+    renderConfig();
+    window.scrollTo(0,0);
+    return;
+  }
 
   var temaMatch = hash.match(/^#\/tema\/([^\/]+)/);
   var relMatch = hash.match(/^#\/relatorio(?:\/([^\/]+))?/);
