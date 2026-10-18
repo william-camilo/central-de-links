@@ -224,16 +224,29 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .msg.ok{background:rgba(52,211,153,0.1);color:var(--good)}
 .msg.err{background:rgba(239,68,68,0.1);color:#F87171}
 </style>
+<link rel="stylesheet" href="/layout.css">
+<meta name="theme-color" content="#080a16">
 </head>
 <body>
 
-<div class="app">
+<a class="skip-link" href="#main-content">Pular para o conteúdo</a>
+<div class="workspace">
+<aside class="sidebar" id="sidebar" aria-label="Menu principal"></aside>
+<div class="main-column">
+<header class="workspace-top"><div class="breadcrumbs">Meu espaço <span>/</span><b id="breadcrumb">Biblioteca</b></div><div class="top-actions"><button class="btn-soft desktop-action" id="refresh-library" type="button">Atualizar links</button><a class="icon-btn" href="#/config" aria-label="Configurações">⚙</a></div></header>
+<div class="mobile-brand"><span class="brand-mark" aria-hidden="true">CL</span>Central de Links</div>
+<nav class="mobile-nav" id="mobile-nav" aria-label="Menu principal no celular"></nav>
+<main class="app" id="main-content" tabindex="-1">
+  <div id="global-message" class="global-message" role="status" aria-live="polite"></div>
   <div id="home" class="screen"></div>
   <div id="tema" class="screen hidden"></div>
   <div id="relatorio" class="screen hidden"></div>
   <div id="revisar" class="screen hidden"></div>
   <div id="config" class="screen hidden"></div>
+</main>
 </div>
+</div>
+<dialog id="library-dialog" class="dialog" aria-labelledby="dialog-title"></dialog>
 
 <a class="fab" href="https://t.me/WillexLinkBot" target="_blank" rel="noopener" aria-label="Adicionar link pelo Telegram">
   <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#0B0E14" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -247,7 +260,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 
 var SUPABASE_URL = "https://vuakukopbjvdsczhhzjj.supabase.co";
 var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1YWt1a29wYmp2ZHNjemhoempqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MDM4NDcsImV4cCI6MjEwNjE3OTg0N30.gVCtEcYln55EF88JDIy4qndLyN32YjJ_SskANF54vJw";
-var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var sb = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 var DELETE_FN_URL = SUPABASE_URL + "/functions/v1/manage-delete";
 var ADMIN_FN_URL = SUPABASE_URL + "/functions/v1/manage-admin";
 
@@ -317,23 +330,34 @@ function todayFileStamp(){
 }
 
 // ---------- PDF picker (modal) ----------
+var pickerReturnFocus = null;
 function closePicker(){
   var ov = document.getElementById('pdf-picker-overlay');
   if(ov) ov.remove();
   document.removeEventListener('keydown', onPickerKey);
+  if(pickerReturnFocus && pickerReturnFocus.isConnected) pickerReturnFocus.focus();
 }
-function onPickerKey(e){ if(e.key === 'Escape') closePicker(); }
+function onPickerKey(e){
+  if(e.key === 'Escape') closePicker();
+  if(e.key === 'Tab'){
+    var controls = document.querySelectorAll('#pdf-picker-overlay button');
+    var first = controls[0], last = controls[controls.length-1];
+    if(e.shiftKey && document.activeElement === first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey && document.activeElement === last){e.preventDefault();first.focus();}
+  }
+}
 
 function openPdfPicker(title, sub, options){
   closePicker();
+  pickerReturnFocus = document.activeElement;
   var ov = document.createElement('div');
   ov.id = 'pdf-picker-overlay';
   ov.className = 'modal-overlay';
   var optsHtml = options.map(function(o, i){
     return '<button class="modal-opt'+(o.all?' all':'')+'" data-i="'+i+'" type="button"><b>'+esc(o.label)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</button>';
   }).join('');
-  ov.innerHTML = '<div class="modal-card">'
-    + '<div class="modal-card-head"><div><h3>'+esc(title)+'</h3>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'
+  ov.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pdf-picker-title">'
+    + '<div class="modal-card-head"><div><h3 id="pdf-picker-title">'+esc(title)+'</h3>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'
     + '<button class="modal-close" id="pdf-picker-close" type="button" aria-label="Fechar">'+ICO.close+'</button></div>'
     + '<div class="modal-opts">'+optsHtml+'</div>'
     + '</div>';
@@ -348,11 +372,12 @@ function openPdfPicker(title, sub, options){
     });
   });
   document.addEventListener('keydown', onPickerKey);
+  document.getElementById('pdf-picker-close').focus();
 }
 
 function openHomePdfPicker(){
   var options = [{ all:true, label:'Todos os temas', sub: state.links.length+' link'+(state.links.length===1?'':'s')+' no total', onSelect:function(){ generatePdf({type:'all'}); } }];
-  state.categories.forEach(function(c){
+  themeCategories().forEach(function(c){
     var n = linksByCategory(c.id).length;
     if(n===0) return;
     options.push({ label:c.name, sub:n+' link'+(n===1?'':'s'), onSelect:function(){ generatePdf({type:'category', catId:c.id}); } });
@@ -361,7 +386,7 @@ function openHomePdfPicker(){
 }
 
 function openTemaPdfPicker(catId){
-  var cat = state.categories.find(function(c){ return c.id === catId; });
+  var cat = themeCategories().find(function(c){ return c.id === catId; });
   if(!cat) return;
   var items = linksByCategory(catId);
   var options = [{ all:true, label:'Tema inteiro — '+cat.name, sub: items.length+' link'+(items.length===1?'':'s'), onSelect:function(){ generatePdf({type:'category', catId:catId}); } }];
@@ -373,17 +398,20 @@ function openTemaPdfPicker(catId){
 
 // ---------- PDF generation (real downloadable file, via jsPDF) ----------
 function buildReportScope(scope){
+  if(scope.type === 'selection'){
+    return { title: scope.title || 'Seleção de links', cats: themeCategories(), itemsOf: function(c){ return linksByCategory(c.id).filter(function(l){ return scope.ids.indexOf(l.id) !== -1; }); }, filename: 'central-de-links-selecao' };
+  }
   if(scope.type === 'category'){
-    var cat = state.categories.find(function(c){ return c.id === scope.catId; });
+    var cat = themeCategories().find(function(c){ return c.id === scope.catId; });
     return { title: cat ? cat.name : 'Tema', cats: cat ? [cat] : [], itemsOf: function(c){ return linksByCategory(c.id); }, filename: 'central-de-links-'+slugify(cat?cat.name:'tema') };
   }
   if(scope.type === 'link'){
     var link = state.links.find(function(l){ return l.id === scope.linkId; });
-    var cat2 = link ? state.categories.find(function(c){ return c.id === link.category_id; }) : null;
+    var cat2 = link ? themeCategories().find(function(c){ return c.id === link.category_id; }) || {id:'__uncategorized',name:'Sem categoria'} : null;
     return { title: (link?(link.title||'Link'):'Link')+(cat2?' — '+cat2.name:''), cats: cat2 ? [cat2] : [], itemsOf: function(){ return link ? [link] : []; }, filename: 'central-de-links-'+slugify(link?link.title:'item') };
   }
   // 'all'
-  return { title: 'Relatório completo', cats: state.categories, itemsOf: function(c){ return linksByCategory(c.id); }, filename: 'central-de-links-completo' };
+  return { title: 'Relatório completo', cats: themeCategories(), itemsOf: function(c){ return linksByCategory(c.id); }, filename: 'central-de-links-completo' };
 }
 
 function generatePdf(scope){
@@ -490,7 +518,7 @@ function callAdmin(action, payload){
   }).then(function(res){
     if(res.status === 401 || res.status === 429){ return pinError(res); }
     return res.json().catch(function(){ return {}; }).then(function(j){
-      if(!res.ok){ throw new Error(j.error || ('Falha (HTTP '+res.status+').')); }
+      if(!res.ok){ var err = new Error(j.error || ('Falha (HTTP '+res.status+').')); err.status = res.status; throw err; }
       return j;
     });
   });
@@ -619,6 +647,7 @@ function wireImageDownloadButtons(root){
 
 // ---------- data ----------
 function loadData(){
+  if(!sb){ state.error = new Error('Não foi possível carregar a conexão.'); return Promise.resolve(); }
   return Promise.all([
     sb.from('categories').select('id,name,color,created_at').order('created_at'),
     sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,video_status,screen_text,tools_cited,needs_review,pending_category,review_reason,category_confidence,category_locked,summary_inferred,cited_links(id,url,label),link_images(id,url,position)')
@@ -630,6 +659,7 @@ function loadData(){
     state.categories = catRes.data || [];
     state.links = linkRes.data || [];
     state.loaded = true;
+    state.error = null;
   }).catch(function(err){
     state.error = err;
     console.error('Falha ao carregar Central de Links', err);
@@ -637,145 +667,273 @@ function loadData(){
 }
 
 function linksByCategory(catId){
+  if(catId === '__uncategorized') return state.links.filter(function(l){ return !state.categories.some(function(c){return c.id===l.category_id;}); });
   return state.links.filter(function(l){ return l.category_id === catId; });
+}
+function themeCategories(){
+  return state.categories.concat(linksByCategory('__uncategorized').length ? [{id:'__uncategorized',name:'Sem categoria',color:'#FBBF24'}] : []);
 }
 
 // ---------- home ----------
-var searchQuery = '';
+// ---------- library navigation and personal organization ----------
+var personal = { folders: [], links: {} };
+var personalReady = false;
+var searchQuery = '', filterCategory = '', filterType = 'all', sortOrder = 'recent', visibleLimit = 12;
+var libraryView = 'all', activeFolder = '';
+var dialogReturnFocus = null;
+var personalRevision = null;
 
+// A revision prevents an older device from overwriting a newer organization snapshot.
+function validatePersonal(value){
+  if(!value || value.version!==1 || !Array.isArray(value.folders) || !value.links || typeof value.links!=='object' || Array.isArray(value.links))throw new Error('O arquivo de organização não é válido.');
+  if(value.folders.length>200 || Object.keys(value.links).length>20000)throw new Error('O arquivo de organização excede o limite.');
+  var ids=new Set(),clean={folders:[],links:Object.create(null)};
+  value.folders.forEach(function(f){
+    if(!f || typeof f.id!=='string' || !/^[a-zA-Z0-9-]{1,80}$/.test(f.id) || ids.has(f.id) || typeof f.name!=='string' || !f.name.trim() || f.name.length>60)throw new Error('Há uma pasta inválida no arquivo.');
+    ids.add(f.id);clean.folders.push({id:f.id,name:f.name.trim()});
+  });
+  Object.keys(value.links).forEach(function(id){
+    var m=value.links[id];
+    if(!/^[a-zA-Z0-9-]{1,80}$/.test(id) || !m || typeof m.favorite!=='boolean' || typeof m.folder!=='string' || !Array.isArray(m.tags) || m.tags.length>12 || m.tags.some(function(t){return typeof t!=='string'||t.length>40;}))throw new Error('Há um link inválido no arquivo.');
+    clean.links[id]={favorite:m.favorite,folder:ids.has(m.folder)?m.folder:'',tags:Array.from(new Set(m.tags.map(function(t){return t.trim();}).filter(Boolean)))};
+  });
+  return clean;
+}
+function loadPersonal(unlock){
+  if(!unlock && !sessionStorage.getItem('cdl_pin')) return Promise.resolve();
+  return callAdmin('organization_get').then(function(response){
+    personal=validatePersonal(response.data);personalRevision=response.revision;personalReady=true;
+  }).catch(function(err){
+    personalReady=false;notify('Não foi possível sincronizar a organização: '+err.message,true);
+    if(unlock)throw err;
+  });
+}
+function ensurePersonal(){
+  return personalReady?Promise.resolve():loadPersonal(true);
+}
+function savePersonal(next){
+  return Promise.resolve().then(function(){
+    if(!personalReady)throw new Error('Desbloqueie a organização com seu PIN antes de salvar.');
+    var clean=validatePersonal(Object.assign({version:1},next));
+    return callAdmin('organization_save',{data:Object.assign({version:1},clean),expected_revision:personalRevision}).then(function(response){
+      personal=validatePersonal(response.data);personalRevision=response.revision;
+    }).catch(function(err){
+      if(err.status===409)return loadPersonal().then(function(){throw new Error('A organização mudou em outro dispositivo. Atualize esta tela e repita a alteração.');});
+      if(!sessionStorage.getItem('cdl_pin'))personalReady=false;
+      throw err;
+    });
+  });
+}
+
+function uiIcon(name){
+  var paths = {
+    grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    folder:'<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+    star:'<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2-5.5-2.9-5.5 2.9 1-6.2L3 9.6l6.2-.9Z"/>',
+    review:'<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/><path d="m8 12 3 3 5-6"/>',
+    send:'<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    arrow:'<path d="M7 17 17 7M7 7h10v10"/>',
+    edit:'<path d="m15 4 5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16Z"/>',
+    tag:'<path d="M20 13 11 22 2 13V3h10l8 8a1.5 1.5 0 0 1 0 2Z"/><circle cx="7" cy="8" r="1"/>',
+    device:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+    check:'<path d="m5 12 4 4L19 6"/>',
+    video:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4Z"/>'
+  };
+  return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[name]||paths.grid)+'</svg>';
+}
+function notify(message, error){
+  var el = document.getElementById('global-message');
+  el.textContent = message || '';
+  el.classList.toggle('error', !!error);
+  el.setAttribute('role', error ? 'alert' : 'status');
+}
+function metadata(id){ return Object.prototype.hasOwnProperty.call(personal.links,id) ? personal.links[id] : { favorite:false, folder:'', tags:[] }; }
+function safeUrl(url){ try{ var parsed = new URL(url); return /^https?:$/.test(parsed.protocol) ? parsed.href : '#'; }catch(e){ return '#'; } }
+function decodeRoute(value){ try{return decodeURIComponent(value);}catch(e){return '';} }
+function normalizeSearch(value){ return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function personalOptions(selected){ return '<option value="">Sem pasta</option>'+personal.folders.map(function(f){ return '<option value="'+esc(f.id)+'"'+(selected===f.id?' selected':'')+'>'+esc(f.name)+'</option>'; }).join(''); }
+function storageNote(){ return '<div class="storage-note">'+uiIcon('device')+(personalReady?'<span>Pastas, favoritos e tags sincronizados entre dispositivos</span>':'<button class="text-action" type="button" data-unlock>Desbloquear organização com PIN</button>')+'</div>'; }
+
+function navigation(){
+  var hash = location.hash || '#/';
+  var nav = [
+    ['#/','grid','Todos os links',state.links.length],
+    ['#/favoritos','star','Favoritos',personalReady?state.links.filter(function(l){return metadata(l.id).favorite;}).length:'—'],
+    ['#/pastas','folder','Temas e pastas',themeCategories().length],
+    ['#/revisar','review','Para revisar',state.links.filter(function(l){return l.needs_review;}).length],
+    ['#/relatorio','report','Relatório',null]
+  ];
+  function navIcon(name){ return name==='report'?ICO.report:uiIcon(name); }
+  var html = '<a href="#/" class="brand"><span class="brand-mark">'+ICO.logo+'</span><span>Central<small>DE LINKS</small></span></a>'
+    + '<div class="workspace-label"><span class="avatar">W</span><div>Meu espaço<small>Biblioteca pessoal</small></div></div>'
+    + '<div><div class="nav-label">BIBLIOTECA</div><nav class="side-nav">';
+  nav.forEach(function(n){ html += '<a class="nav-item" href="'+n[0]+'"'+(hash===n[0]?' aria-current="page"':'')+'>'+navIcon(n[1])+'<span>'+n[2]+'</span>'+(n[3]!=null?'<span class="nav-count'+(n[1]==='review'&&n[3]?' warn':'')+'">'+n[3]+'</span>':'')+'</a>'; });
+  html += '</nav></div><div><div class="nav-label">TEMAS</div><nav class="side-nav">';
+  themeCategories().forEach(function(c){html += '<a class="nav-item" href="#/tema/'+encodeURIComponent(c.id)+'"'+(hash==='#/tema/'+encodeURIComponent(c.id)?' aria-current="page"':'')+'>'+uiIcon('folder')+'<span>'+esc(c.name)+'</span><span class="nav-count">'+linksByCategory(c.id).length+'</span></a>';});
+  html += '</nav></div><div><div class="nav-label">PASTAS PESSOAIS<button class="icon-plain" type="button" data-new-folder aria-label="Criar pasta">'+uiIcon('plus')+'</button></div><nav class="side-nav">';
+  personal.folders.forEach(function(f){html += '<a class="nav-item" href="#/pasta/'+encodeURIComponent(f.id)+'"'+(hash==='#/pasta/'+encodeURIComponent(f.id)?' aria-current="page"':'')+'>'+uiIcon('folder')+'<span>'+esc(f.name)+'</span><span class="nav-count">'+state.links.filter(function(l){return metadata(l.id).folder===f.id;}).length+'</span></a>';});
+  if(!personal.folders.length)html += '<span class="nav-empty">Crie pastas para reunir suas referências por projeto ou interesse.</span>';
+  html += '</nav></div><div class="sidebar-bottom"><a href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">'+uiIcon('send')+'<span>Telegram<small>Envie novos links para o bot</small></span></a><a class="nav-item" href="#/config"'+(hash==='#/config'?' aria-current="page"':'')+'>'+ICO.gear+'Configurações</a></div>';
+  document.getElementById('sidebar').innerHTML = html;
+  var mobileLabels = ['Links','Favoritos','Pastas','Revisar','Relatório'];
+  document.getElementById('mobile-nav').innerHTML = nav.map(function(n,i){return '<a href="'+n[0]+'"'+(hash===n[0]?' aria-current="page"':'')+'>'+navIcon(n[1])+'<span>'+mobileLabels[i]+'</span></a>';}).join('');
+  var title = nav.find(function(n){return n[0]===hash;});
+  var folder = personal.folders.find(function(f){return '#/pasta/'+encodeURIComponent(f.id)===hash;});
+  document.getElementById('breadcrumb').textContent = title?title[2]:folder?folder.name:hash.indexOf('/config')>=0?'Configurações':hash.indexOf('/link/')>=0?'Leitura':'Categoria';
+}
+function folderCard(f){
+  var count = state.links.filter(function(l){return metadata(l.id).folder===f.id;}).length;
+  return '<a class="folder-card" href="#/pasta/'+encodeURIComponent(f.id)+'"><span class="folder-top">'+uiIcon('folder')+'</span><b>'+esc(f.name)+'</b><small>'+count+' link'+(count===1?'':'s')+'</small></a>';
+}
+function themeFolderCard(category){
+  var links=linksByCategory(category.id),review=links.filter(function(l){return l.needs_review;}).length;
+  return '<a class="folder-card theme-folder" data-theme-id="'+esc(category.id)+'" href="#/tema/'+encodeURIComponent(category.id)+'"><span class="folder-top">'+uiIcon('folder')+uiIcon('arrow')+'</span><b>'+esc(category.name)+'</b><small><span class="theme-link-count">'+links.length+'</span> link'+(links.length===1?'':'s')+'</small>'+(review?'<span class="theme-review-count">'+review+' para revisar</span>':'<span class="theme-reviewed">Classificação atual</span>')+'</a>';
+}
+function thematicFolders(){
+  var categories=themeCategories();
+  return categories.length?'<div class="folder-grid theme-folder-grid">'+categories.map(themeFolderCard).join('')+'</div>':stateBlock('Os temas aparecerão aqui quando os primeiros links forem processados.');
+}
+function emptyFolders(){return '<div class="folder-empty"><div><b>Um lugar para cada projeto.</b>Crie uma pasta e adicione links pela tela de leitura.</div><button class="btn-soft primary" data-new-folder type="button">'+uiIcon('plus')+'Criar pasta</button></div>';}
 function renderHome(){
-  if(!state.loaded && !state.error){
-    homeEl.innerHTML = stateBlock('Carregando seus links…');
-    return;
+  if(!state.loaded && !state.error){homeEl.innerHTML=stateBlock('Carregando sua biblioteca…');return;}
+  if(state.error){homeEl.innerHTML=stateBlock('Não foi possível atualizar seus links.<div class="empty-actions"><button class="btn-soft primary" type="button" data-retry>Tentar novamente</button></div>');return;}
+  if(!personalReady && libraryView!=='all' && libraryView!=='folders'){
+    homeEl.innerHTML='<div class="tema-head"><h1>Sua organização pessoal</h1><p class="hint">Use o PIN da aplicação para acessar pastas, favoritos e tags em qualquer dispositivo.</p></div>'+storageNote();return;
   }
-  if(state.error){
-    homeEl.innerHTML = stateBlock('Não consegui carregar os dados agora. <br><b>Confira sua conexão e recarregue.</b>');
-    return;
-  }
-
-  var totalLinks = state.links.length;
-  var totalCited = state.links.reduce(function(n,l){ return n + (l.cited_links?l.cited_links.length:0); }, 0);
-
-  var q = searchQuery.trim().toLowerCase();
-  var filteredLinks = !q ? state.links : state.links.filter(function(l){
-    var cat = state.categories.find(function(c){return c.id===l.category_id;});
-    var hay = [l.title,l.summary,cat?cat.name:''].join(' ').toLowerCase();
-    return hay.indexOf(q) !== -1;
-  });
-
+  var currentFolder = personal.folders.find(function(f){return f.id===activeFolder;});
+  if(libraryView==='folder'&&!currentFolder){homeEl.innerHTML=stateBlock('Pasta não encontrada. <a href="#/pastas">Ver minhas pastas</a>');return;}
   var html = '';
-  html += '<div class="topbar">'
-    + '<div class="brand">'+ICO.logo+'<span>Central de Links</span></div>'
-    + '<a href="#/config" class="icon-btn" aria-label="Configurações e chaves de API">'+ICO.gear+'</a>'
-    + '</div>';
-
-  var reviewN = state.links.filter(function(l){ return l.needs_review; }).length;
-  if(reviewN && !searchQuery.trim()){
-    html += '<a href="#/revisar" class="review-cta">🟡<span>'+reviewN+' link'+(reviewN===1?'':'s')+' para revisar a categoria</span>›</a>';
+  if(libraryView==='folders'){
+    var reviewTotal=state.links.filter(function(l){return l.needs_review;}).length;
+    html = '<section><div class="section-heading"><div class="section-title"><h1>Pastas por tema</h1><span class="count-chip">'+state.links.length+' links</span></div></div><p class="theme-description">Cada link aparece na pasta correspondente à sua categoria atual.</p>'+thematicFolders()+'</section>';
+    if(reviewTotal)html += '<a class="review-cta" href="#/revisar">'+uiIcon('review')+'<span class="review-message">'+reviewTotal+' classificações para revisar<small>Esses links continuam em suas pastas atuais até a revisão.</small></span>'+uiIcon('arrow')+'</a>';
+    html += '<section class="personal-folder-section"><div class="section-heading"><h2>Pastas pessoais</h2>'+(personalReady?'<button class="btn-soft primary" data-new-folder type="button">'+uiIcon('plus')+'Nova pasta</button>':'')+'</div><p class="theme-description">Coleções adicionais por projeto ou interesse, além dos temas.</p>'+storageNote();
+    if(personalReady)html += personal.folders.length?'<div class="folder-grid folder-management">'+personal.folders.map(function(f){return '<div class="folder-box">'+folderCard(f)+'<div class="folder-actions"><button class="text-action" data-edit-folder="'+esc(f.id)+'" type="button">'+uiIcon('edit')+'Renomear</button><button class="icon-plain" data-remove-folder="'+esc(f.id)+'" type="button" aria-label="Remover pasta '+esc(f.name)+'">'+ICO.trash+'</button></div></div>';}).join('')+'</div>':emptyFolders();
+    html += '</section>';
+    homeEl.innerHTML=html;return;
   }
-
-  html += '<div class="search">'+ICO.search+'<input id="search-input" type="text" placeholder="Buscar por título, tema ou resumo" value="'+esc(searchQuery)+'"></div>';
-
-  if(!q){
-    html += '<div class="status"><span class="dot"></span>'
-      + '<span class="muted">Lendo direto do Supabase</span><span class="sep"></span>'
-      + '<span class="muted">'+totalLinks+' links · '+totalCited+' links citados</span></div>';
-
-    html += '<div class="report-cta">'
-      + '<a href="#/relatorio" style="display:flex;align-items:center;gap:12px;flex-grow:1;min-width:0">'
-      + '<div class="ic">'+ICO.report+'</div>'
-      + '<div class="txt"><b>Relatório completo</b><small>'+state.categories.length+' temas · '+totalLinks+' links · resumos e links citados</small></div>'
-      + '</a>'
-      + '<button class="btn-accent" id="btn-pdf-home" type="button">'+ICO.pdfsm+'Gerar PDF</button>'
-      + '</div>';
-
-    html += '<div>';
-    html += '<div class="section-label" style="margin-bottom:10px">Temas</div>';
-    html += '<div class="themes-grid">';
-    state.categories.forEach(function(c){
-      var n = linksByCategory(c.id).length;
-      var citedN = linksByCategory(c.id).reduce(function(s,l){return s+(l.cited_links?l.cited_links.length:0);},0);
-      html += '<div class="theme-card" data-nav="#/tema/'+c.id+'" style="border-color:'+esc(c.color)+'33">'
-        + '<button class="theme-del" type="button" data-id="'+esc(c.id)+'" data-name="'+esc(c.name)+'" data-n="'+n+'" aria-label="Excluir tema">'+ICO.trash+'</button>'
-        + '<span class="name"><span class="swatch" style="background:'+esc(c.color)+'"></span>'+esc(c.name)+'</span>'
-        + '<span class="meta">'+n+' link'+(n===1?'':'s')+(citedN?' · '+citedN+' citados':'')+'</span>'
-        + '</div>';
-    });
-    html += '<button class="theme-card new" disabled title="Temas novos são sugeridos pela IA e aprovados por você na tela Revisar">'+ICO.plus+'Novo tema</button>';
-    html += '</div></div>';
-
-    if(state.categories.length){
-      html += '<div class="danger-zone" style="margin-top:14px">'
-        + '<div class="txt"><b>Zona de risco</b>Apaga todos os temas e links salvos, sem volta.</div>'
-        + '<button class="danger-btn" id="btn-delete-all" type="button">'+ICO.trash+'Excluir tudo</button>'
-        + '</div>';
-    }
+  if(libraryView==='all'&&!searchQuery&&!filterCategory&&filterType==='all'){
+    html += '<section class="hero"><div class="landscape" aria-hidden="true"><div class="sun"></div><div class="mountains"></div><div class="grid-floor"></div></div><div class="hero-copy"><div class="eyebrow">SEU UNIVERSO DE CONTEÚDO</div><h1>Boas ideias.<br><em>Sempre à mão.</em></h1><p>Salve, organize e reencontre o que importa.</p><a class="primary-link" href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">'+uiIcon('plus')+'Adicionar pelo Telegram</a></div><div class="hero-monogram" aria-hidden="true"><span>CL</span></div></section>';
+    html += '<section><div class="section-heading"><h2>Seus links por tema</h2><a class="text-action" href="#/pastas">Temas e pastas '+uiIcon('arrow')+'</a></div>'+thematicFolders()+'</section>';
   }
-
-  html += '<div>';
-  html += '<div class="section-label" style="margin-bottom:10px">'+(q?'Resultado da busca':'Recentes')+'</div>';
-  if(filteredLinks.length === 0){
-    html += stateBlock(q ? 'Nada encontrado para <b>"'+esc(searchQuery)+'"</b>.' : 'Nenhum link processado ainda.<br>Manda um link no Telegram pra começar.');
-  } else {
-    html += '<div class="recent-list">';
-    (q?filteredLinks:filteredLinks.slice(0,8)).forEach(function(l){ html += recentCard(l); });
-    html += '</div>';
-  }
-  html += '</div>';
-
-  homeEl.innerHTML = html;
-
-  var input = document.getElementById('search-input');
-  if(input){
-    input.addEventListener('input', function(e){
-      searchQuery = e.target.value;
-      var caret = e.target.selectionStart;
-      renderHome();
-      var newInput = document.getElementById('search-input');
-      if(newInput){ newInput.focus(); newInput.setSelectionRange(caret, caret); }
-    });
-  }
-  var btnPdfHome = document.getElementById('btn-pdf-home');
-  if(btnPdfHome){ btnPdfHome.addEventListener('click', openHomePdfPicker); }
-
-  homeEl.querySelectorAll('.theme-card[data-nav]').forEach(function(card){
-    card.addEventListener('click', function(e){
-      if(e.target.closest('.theme-del')) return;
-      location.hash = card.getAttribute('data-nav');
-    });
+  var reviewCount=state.links.filter(function(l){return l.needs_review;}).length;
+  if(reviewCount&&libraryView==='all'&&!searchQuery) html += '<a href="#/revisar" class="review-cta">'+uiIcon('review')+'<span class="review-message">'+reviewCount+' links para revisar<small>A IA sugere a categoria. Você confirma.</small></span>'+uiIcon('arrow')+'</a>';
+  var filtered=filteredLibrary();
+  var heading=libraryView==='favorites'?'Favoritos':libraryView==='folder'?currentFolder.name:'Sua biblioteca';
+  html += '<section><div class="section-heading"><div class="section-title"><h1>'+esc(heading)+'</h1><span class="count-chip">'+filtered.length+' links</span></div><button type="button" class="text-action" id="btn-pdf-home">'+ICO.report+'Gerar PDF</button></div>';
+  html += '<div class="library-toolbar"><label class="search">'+ICO.search+'<input id="search-input" type="search" aria-label="Buscar links, categorias e tags" placeholder="Buscar links, temas ou tags…" value="'+esc(searchQuery)+'"></label><select class="filter-select" id="category-filter" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option>'+state.categories.map(function(c){return '<option value="'+esc(c.id)+'"'+(filterCategory===c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select><select class="filter-select" id="sort-order" aria-label="Ordenar links"><option value="recent"'+(sortOrder==='recent'?' selected':'')+'>Mais recentes</option><option value="title"'+(sortOrder==='title'?' selected':'')+'>Título A–Z</option></select></div>';
+  html += '<div class="filter-row"><div class="type-filters" aria-label="Filtrar por formato">'+[['all','Todos'],['video','Vídeos'],['image','Imagens'],['link','Outros links']].map(function(t){return '<button type="button" data-filter-type="'+t[0]+'" aria-pressed="'+(filterType===t[0])+'">'+t[1]+'</button>';}).join('')+'</div>'+storageNote()+'</div>';
+  html += '<div class="library-grid" id="library-results">'+(filtered.length?filtered.slice(0,visibleLimit).map(recentCard).join(''):stateBlock(libraryView==='favorites'&&!searchQuery?'Marque a estrela de um link para encontrá-lo aqui.':'Nenhum link encontrado para este filtro.'))+'</div><div class="more-row">'+(filtered.length>visibleLimit?'<button class="btn-soft" type="button" id="show-more">Mostrar mais links ('+(filtered.length-visibleLimit)+')</button>':'')+'</div></section>';
+  html += '<div class="library-bottom"><span>'+state.links.length+' links · '+state.categories.length+' categorias</span><a href="#/relatorio">Abrir relatório completo '+uiIcon('arrow')+'</a></div>';
+  homeEl.innerHTML=html;
+  var input=document.getElementById('search-input');
+  input.addEventListener('input',function(){searchQuery=input.value;visibleLimit=12;updateResults();});
+  document.getElementById('category-filter').addEventListener('change',function(e){filterCategory=e.target.value;visibleLimit=12;updateResults();});
+  document.getElementById('sort-order').addEventListener('change',function(e){sortOrder=e.target.value;updateResults();});
+  document.getElementById('btn-pdf-home').addEventListener('click',function(){
+    if(libraryView==='favorites'||libraryView==='folder'||searchQuery||filterCategory||filterType!=='all')generatePdf({type:'selection',ids:filteredLibrary().map(function(l){return l.id;}),title:heading});
+    else openHomePdfPicker();
   });
-  homeEl.querySelectorAll('.theme-del').forEach(function(btn){
-    btn.addEventListener('click', function(e){
-      e.stopPropagation();
-      deleteCategoryFlow(btn.getAttribute('data-id'), btn.getAttribute('data-name'), parseInt(btn.getAttribute('data-n'),10)||0);
-    });
-  });
-  var btnDeleteAll = document.getElementById('btn-delete-all');
-  if(btnDeleteAll){ btnDeleteAll.addEventListener('click', deleteAllFlow); }
 }
-
+function filteredLibrary(){
+  var q=normalizeSearch(searchQuery);
+  var items=state.links.filter(function(l){
+    var m=metadata(l.id),c=catById(l.category_id);
+    var format=isVideo(l.media_type)?'video':/image|photo|carousel|carrossel/i.test(l.media_type||'')?'image':'link';
+    return (libraryView!=='favorites'||m.favorite)&&(libraryView!=='folder'||m.folder===activeFolder)&&(!filterCategory||l.category_id===filterCategory)&&(filterType==='all'||filterType===format)&&(!q||normalizeSearch([l.title,l.summary,l.caption,l.raw_url,c?c.name:''].concat(m.tags||[],l.tools_cited||[]).join(' ')).indexOf(q)!==-1);
+  });
+  return sortOrder==='title'?items.slice().sort(function(a,b){return (a.title||'').localeCompare(b.title||'','pt-BR');}):items;
+}
+function updateResults(){
+  var items=filteredLibrary();
+  document.getElementById('library-results').innerHTML=items.length?items.slice(0,visibleLimit).map(recentCard).join(''):stateBlock('Nenhum link encontrado para este filtro.');
+  homeEl.querySelector('.count-chip').textContent=items.length+' links';
+  homeEl.querySelector('.more-row').innerHTML=items.length>visibleLimit?'<button class="btn-soft" type="button" id="show-more">Mostrar mais links ('+(items.length-visibleLimit)+')</button>':'';
+  homeEl.querySelectorAll('[data-filter-type]').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.filterType===filterType);});
+  homeEl.querySelectorAll('.storage-note').forEach(function(note){note.outerHTML=storageNote();});
+}
 function recentCard(l){
-  var cat = state.categories.find(function(c){ return c.id === l.category_id; });
-  var catName = cat ? cat.name : 'Sem tema';
-  var catColor = cat ? cat.color : '#7C9CFF';
-  var citedN = l.cited_links ? l.cited_links.length : 0;
-  var firstImg = (l.link_images && l.link_images.length)
-    ? l.link_images.slice().sort(function(a,b){return a.position-b.position;})[0].url
-    : null;
-  var thumb = firstImg
-    ? '<img src="'+esc(firstImg)+'" loading="lazy" alt="" style="width:62px;height:62px;border-radius:9px;object-fit:cover;flex-shrink:0;background:#1A1F2B">'
-    : isVideo(l.media_type)
-    ? '<div class="thumb-placeholder">'+ICO.play+'</div>'
-    : '<div class="thumb-placeholder" style="color:var(--ink-faint);font-size:9px;text-align:center;padding:4px">'+esc((l.media_type||'link').toUpperCase())+'</div>';
-  var sub = citedN ? (citedN+' link'+(citedN===1?'':'s')+' citado'+(citedN===1?'':'s')) : domainOf(l.raw_url);
-  return '<a href="#/tema/'+(cat?cat.id:'')+'" class="recent-card">'
-    + thumb
-    + '<div class="recent-body">'
-    + '<div class="recent-top"><span class="badge" style="background:'+catColor+'1F;color:'+catColor+'">'+esc(catName)+'</span><span class="recent-when">'+esc(timeAgo(l.processed_at))+'</span></div>'
-    + '<div class="recent-title">'+esc(l.title||'(sem título)')+'</div>'
-    + '<span class="recent-sub">'+esc(sub)+'</span>'
-    + '</div></a>';
+  var cat=catById(l.category_id),m=metadata(l.id),cited=(l.cited_links||[]).length;
+  var images=(l.link_images||[]).slice().sort(function(a,b){return a.position-b.position;});
+  return '<article class="library-card"><div class="library-card-top"><span class="source-icon">'+(images.length?'<img src="'+esc(safeUrl(images[0].url))+'" loading="lazy" alt="">':uiIcon(isVideo(l.media_type)?'video':'tag'))+'</span><span class="source-domain">'+esc(domainOf(l.raw_url))+'</span><button class="icon-plain favorite-btn" type="button" data-favorite="'+esc(l.id)+'" aria-label="'+(m.favorite?'Remover dos favoritos: ':'Favoritar: ')+esc(l.title||'Link')+'" aria-pressed="'+!!m.favorite+'">'+uiIcon('star')+'</button></div><a class="library-title" href="#/link/'+encodeURIComponent(l.id)+'">'+esc(l.title||'Conteúdo sem título')+'</a><p class="library-summary">'+esc(l.summary||l.caption||'Abra o conteúdo para consultar os links e referências disponíveis.')+'</p>'+(m.tags.length?'<div class="library-tags">'+m.tags.slice(0,4).map(function(t){return '<span class="library-tag">#'+esc(t)+'</span>';}).join('')+'</div>':'')+'<div class="library-card-bottom">'+(cat?'<a href="#/tema/'+encodeURIComponent(cat.id)+'">'+esc(cat.name)+'</a>':'<span>Sem categoria</span>')+(l.needs_review?'<a class="review-chip" href="#/revisar">Revisar tema</a>':'<span>'+cited+' referências · '+esc(timeAgo(l.processed_at))+'</span>')+'</div></article>';
 }
+function openFolderDialog(id){
+  if(!personalReady){ensurePersonal().then(function(){navigation();openFolderDialog(id);}).catch(function(err){notify(err.message,true);});return;}
+  var existing=personal.folders.find(function(f){return f.id===id;});
+  var dialog=document.getElementById('library-dialog');dialogReturnFocus=document.activeElement;
+  dialog.innerHTML='<form id="folder-form"><div class="dialog-head"><h2 id="dialog-title">'+(existing?'Renomear pasta':'Nova pasta')+'</h2><button type="button" class="icon-plain" data-close-dialog aria-label="Fechar">'+ICO.close+'</button></div><label class="field">Nome da pasta<input id="folder-name" required maxlength="60" value="'+esc(existing?existing.name:'')+'" placeholder="Ex.: Meu próximo projeto" autofocus></label>'+storageNote()+'<p id="folder-error" role="alert"></p><button class="btn-soft primary" type="submit">Salvar pasta</button></form>';
+  dialog.showModal();
+  document.getElementById('folder-form').addEventListener('submit',function(e){
+    e.preventDefault();var name=document.getElementById('folder-name').value.trim(),error=document.getElementById('folder-error');
+    if(!name){error.textContent='Digite um nome para a pasta.';return;}
+    if(personal.folders.some(function(f){return f.id!==id&&normalizeSearch(f.name)===normalizeSearch(name);})){error.textContent='Já existe uma pasta com esse nome.';return;}
+    var next=structuredClone(personal);
+    if(existing)next.folders.find(function(f){return f.id===id;}).name=name;
+    else next.folders.push({id:crypto.randomUUID(),name:name});
+    var button=e.target.querySelector('[type=submit]');button.disabled=true;
+    savePersonal(next).then(function(){dialog.close();navigation();if(!homeEl.classList.contains('hidden'))renderHome();notify('Pasta salva.');}).catch(function(err){error.textContent=err.message;button.disabled=false;});
+  });
+}
+function renderLink(id){
+  var link=state.links.find(function(l){return l.id===id;});
+  if(!state.loaded){temaEl.innerHTML=stateBlock('Carregando…');return;}
+  if(!link){temaEl.innerHTML=stateBlock('Link não encontrado. <a href="#/">Voltar à biblioteca</a>');return;}
+  var m=metadata(id);
+  temaEl.innerHTML='<div class="topbar"><a href="#/" class="text-action">'+ICO.back+'Voltar à biblioteca</a><button class="btn-soft" type="button" id="single-pdf">'+ICO.report+'Gerar PDF</button></div>'+itemCard(link)
+    +'<form class="organization" id="organization-form"><h2>Organizar conteúdo</h2><div class="form-grid"><label class="field">Pasta pessoal<select id="link-folder">'+personalOptions(m.folder)+'</select></label><label class="field">Categoria do conteúdo<select id="link-category"><option value="">Sem categoria</option>'+state.categories.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===link.category_id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'<option value="__new">Criar nova categoria…</option></select></label></div><label class="field hidden" id="new-category-field">Nome da nova categoria<input id="new-category-name" maxlength="80"></label><label class="field">Tags (separadas por vírgula)<input id="link-tags" maxlength="250" value="'+esc(m.tags.join(', '))+'" placeholder="Ex.: pesquisa, projeto, referência"></label>'+storageNote()+'<p class="hint">Alterar a categoria exige o PIN e impede que a IA mude sua escolha.</p><div class="actions"><button type="submit" class="btn-soft primary">'+uiIcon('check')+'Salvar organização</button><button type="button" class="btn-soft" data-new-folder>'+uiIcon('plus')+'Nova pasta</button></div><div id="organization-result" role="status" aria-live="polite"></div></form>';
+  document.getElementById('single-pdf').addEventListener('click',function(){generatePdf({type:'link',linkId:id});});
+  if(!personalReady){
+    document.getElementById('organization-form').querySelectorAll('input,select,button:not([data-unlock])').forEach(function(control){control.disabled=true;});
+  }
+  document.getElementById('link-category').addEventListener('change',function(e){document.getElementById('new-category-field').classList.toggle('hidden',e.target.value!=='__new');document.getElementById('new-category-name').required=e.target.value==='__new';});
+  document.getElementById('organization-form').addEventListener('submit',function(e){
+    e.preventDefault();var form=e.target,button=form.querySelector('[type=submit]'),result=document.getElementById('organization-result');
+    var category=document.getElementById('link-category').value,name=document.getElementById('new-category-name').value.trim();
+    var tags=Array.from(new Set(document.getElementById('link-tags').value.split(',').map(function(t){return t.trim().replace(/^#+/,'');}).filter(Boolean)));
+    if(tags.length>12||tags.some(function(t){return t.length>40;})){result.textContent='Use até 12 tags com no máximo 40 caracteres cada.';return;}
+    if(!category&&link.category_id){result.textContent='Escolha uma categoria existente ou crie uma nova.';return;}
+    if(category==='__new'&&!name){result.textContent='Digite o nome da nova categoria.';return;}
+    var next=structuredClone(personal);next.links[id]=Object.assign({},m,{folder:document.getElementById('link-folder').value,tags:tags});
+    button.disabled=true;result.textContent='Salvando…';
+    var changed=category!==String(link.category_id||'');
+    var update=changed?callAdmin('review_move',Object.assign({id:id},category==='__new'?{new_category:name}:{category_id:category})):Promise.resolve();
+    update.then(function(){return savePersonal(next);}).then(function(){return changed?loadData():null;}).then(function(){
+      if(state.error)throw new Error('A alteração foi enviada, mas não foi possível atualizar a leitura. Atualize os links.');
+      navigation();renderLink(id);notify('Organização salva.');
+    }).catch(function(err){result.textContent=err.message;button.disabled=false;});
+  });
+  temaEl.querySelectorAll('.item-del').forEach(function(button){button.addEventListener('click',function(){deleteLinkFlow(id,link.title);});});
+  wireImageCarousels(temaEl);wireImageDownloadButtons(temaEl);wireTranscripts(temaEl);
+}
+
+document.addEventListener('click',function(e){
+  var button=e.target.closest('button');if(!button)return;
+  if(button.hasAttribute('data-new-folder'))openFolderDialog();
+  if(button.hasAttribute('data-edit-folder'))openFolderDialog(button.dataset.editFolder);
+  if(button.hasAttribute('data-close-dialog'))document.getElementById('library-dialog').close();
+  if(button.hasAttribute('data-unlock')){button.disabled=true;loadPersonal(true).then(function(){route();notify('Organização sincronizada.');}).catch(function(err){button.disabled=false;notify(err.message,true);});}
+  if(button.hasAttribute('data-retry'))loadData().then(route);
+  if(button.id==='show-more'){visibleLimit+=12;updateResults();}
+  if(button.hasAttribute('data-filter-type')){filterType=button.dataset.filterType;visibleLimit=12;updateResults();}
+  if(button.hasAttribute('data-favorite')){
+    var id=button.dataset.favorite;button.disabled=true;
+    ensurePersonal().then(function(){var next=structuredClone(personal),m=metadata(id);next.links[id]=Object.assign({},m,{favorite:!m.favorite});return savePersonal(next);}).then(function(){navigation();updateResults();}).catch(function(err){button.disabled=false;notify(err.message,true);});
+  }
+  if(button.hasAttribute('data-remove-folder')){
+    var folderId=button.dataset.removeFolder,f=personal.folders.find(function(item){return item.id===folderId;});
+    if(!f||!confirm('Remover a pasta "'+f.name+'"? Os links continuarão na biblioteca.'))return;
+    var nextState=structuredClone(personal);nextState.folders=nextState.folders.filter(function(item){return item.id!==folderId;});
+    Object.keys(nextState.links).forEach(function(key){if(nextState.links[key].folder===folderId)nextState.links[key].folder='';});
+    savePersonal(nextState).then(function(){navigation();renderHome();notify('Pasta removida. Seus links foram preservados.');}).catch(function(err){notify(err.message,true);});
+  }
+});
+document.getElementById('library-dialog').addEventListener('close',function(){
+  var folderSelect=document.getElementById('link-folder');if(folderSelect){var selected=folderSelect.value;folderSelect.innerHTML=personalOptions(selected);}
+  if(dialogReturnFocus&&dialogReturnFocus.isConnected)dialogReturnFocus.focus();
+});
+document.getElementById('refresh-library').addEventListener('click',function(e){var button=e.target;button.disabled=true;Promise.all([loadData(),loadPersonal()]).then(function(){route();button.disabled=false;if(!state.error)notify('Biblioteca atualizada.');});});
+
 
 function stateBlock(msg){
   return '<div class="state-block">'+msg+'</div>';
@@ -783,7 +941,7 @@ function stateBlock(msg){
 
 // ---------- tema ----------
 function renderTema(catId){
-  var cat = state.categories.find(function(c){ return c.id === catId; });
+  var cat = themeCategories().find(function(c){ return c.id === catId; });
   if(!state.loaded){ temaEl.innerHTML = stateBlock('Carregando…'); return; }
   if(!cat){ temaEl.innerHTML = stateBlock('Tema não encontrado.'); return; }
 
@@ -794,7 +952,7 @@ function renderTema(catId){
   var html = '';
   html += '<div class="topbar">'
     + '<a href="#/" class="backbtn" aria-label="Voltar">'+ICO.back+'</a>'
-    + '<button class="tema-del-btn" id="btn-del-tema" type="button" aria-label="Excluir tema">'+ICO.trash+'</button>'
+    + (catId==='__uncategorized'?'':'<button class="tema-del-btn" id="btn-del-tema" type="button" aria-label="Excluir tema">'+ICO.trash+'</button>')
     + '</div>';
 
   html += '<div class="tema-head">'
@@ -887,7 +1045,7 @@ function itemCard(l){
 
   var images = (l.link_images || []).slice().sort(function(a,b){ return a.position-b.position; });
 
-  var html = '<div class="item-card">';
+  var html = '<article class="item-card">';
   html += '<div class="item-top">'+typeBadge+'<span class="item-author">'+esc(domainOf(l.raw_url))+' · '+esc(timeAgo(l.processed_at))+'</span>'
     + '<button class="item-del" type="button" data-link-id="'+esc(l.id)+'" data-title="'+esc(l.title||'')+'" aria-label="Excluir link">'+ICO.trash+'</button>'
     + '</div>';
@@ -902,7 +1060,7 @@ function itemCard(l){
     if(images.length > 1){
       html += '<div class="thumb-row">';
       images.forEach(function(im,i){
-        html += '<button class="thumb-btn'+(i===0?' active':'')+'" type="button" data-idx="'+i+'"><img src="'+esc(im.url)+'" loading="lazy" alt=""></button>';
+        html += '<button class="thumb-btn'+(i===0?' active':'')+'" type="button" data-idx="'+i+'" aria-label="Ver imagem '+(i+1)+'"><img src="'+esc(safeUrl(im.url))+'" loading="lazy" alt=""></button>';
       });
       html += '</div>';
     }
@@ -931,14 +1089,14 @@ function itemCard(l){
   if(l.cited_links && l.cited_links.length){
     html += '<div class="cited-list"><div class="item-label">LINKS MENCIONADOS</div>';
     l.cited_links.forEach(function(c){
-      html += '<a class="cited-link" href="'+esc(c.url)+'" target="_blank" rel="noopener">'+ICO.linksm+'<span>'+esc(c.label||domainOf(c.url))+'</span></a>';
+      html += '<a class="cited-link" href="'+esc(safeUrl(c.url))+'" target="_blank" rel="noopener">'+ICO.linksm+'<span>'+esc(c.label||domainOf(c.url))+'</span></a>';
     });
     html += '</div>';
   } else {
     html += '<div class="no-cited">Nenhum link citado neste conteúdo.</div>';
   }
-  html += '<div class="orig-link">Original: <a href="'+esc(l.raw_url)+'" target="_blank" rel="noopener">'+esc(l.raw_url)+'</a></div>';
-  html += '</div>';
+  html += '<div class="orig-link">Original: <a href="'+esc(safeUrl(l.raw_url))+'" target="_blank" rel="noopener">'+esc(l.raw_url)+'</a></div>';
+  html += '</article>';
   return html;
 }
 
@@ -946,7 +1104,7 @@ function itemCard(l){
 function renderRelatorio(onlyCatId){
   if(!state.loaded){ relatorioEl.innerHTML = stateBlock('Carregando…'); return; }
 
-  var cats = onlyCatId ? state.categories.filter(function(c){return c.id===onlyCatId;}) : state.categories;
+  var cats = onlyCatId ? themeCategories().filter(function(c){return c.id===onlyCatId;}) : themeCategories();
   var allItems = onlyCatId ? linksByCategory(onlyCatId) : state.links;
   var videoN = allItems.filter(function(l){return isVideo(l.media_type);}).length;
   var today = new Date();
@@ -984,7 +1142,7 @@ function renderRelatorio(onlyCatId){
       if(l.summary){ html += '<div class="sum"><b>'+(l.summary_inferred?'Resumo estimado (conteúdo não lido): ':'Resumo: ')+'</b>'+esc(l.summary)+'</div>'; }
       if(l.cited_links && l.cited_links.length){
         html += '<div class="links"><b>Links mencionados:</b><br>' + l.cited_links.map(function(c){
-          return '→ <a href="'+esc(c.url)+'" target="_blank" rel="noopener" style="color:#3355CC">'+esc(c.label||domainOf(c.url))+'</a>';
+          return '→ <a href="'+esc(safeUrl(c.url))+'" target="_blank" rel="noopener" style="color:#3355CC">'+esc(c.label||domainOf(c.url))+'</a>';
         }).join('<br>') + '</div>';
       }
       html += '</div>';
@@ -1032,7 +1190,7 @@ function renderRevisar(){
       + (pend ? '<button class="btn-soft primary" data-act="accept" type="button">'+(pendIsNew?'Criar tema "'+esc(pend)+'" e mover':'Mover para "'+esc(pend)+'"')+'</button>' : '')
       + '<button class="btn-soft" data-act="keep" type="button">Manter em '+esc(cat?cat.name:'Sem tema')+'</button>'
       + '</div>'
-      + '<div class="row"><select class="sel" data-act="pick"><option value="">Mover para outro tema…</option>'+opts+'<option value="__new">+ Novo tema…</option></select></div>'
+      + '<div class="row"><select class="sel" data-act="pick" aria-label="Escolher categoria para '+esc(l.title||'o link')+'"><option value="">Mover para outro tema…</option>'+opts+'<option value="__new">+ Novo tema…</option></select></div>'
       + '<div class="msg-slot"></div>'
       + '</div>';
   });
@@ -1121,13 +1279,15 @@ function renderConfig(){
 
     html += '<div class="form-card">'
       + '<div class="section-label">Adicionar chave</div>'
-      + '<input class="inp" id="key-label" type="text" maxlength="40" placeholder="Nome (ex.: Conta 2)">'
-      + '<input class="inp" id="key-value" type="password" autocomplete="off" placeholder="Cole a chave do Google AI Studio">'
+      + '<label class="field">Nome da chave<input class="inp" id="key-label" type="text" maxlength="40" placeholder="Nome (ex.: Conta 2)"></label>'
+      + '<label class="field">Chave do Google AI Studio<input class="inp" id="key-value" type="password" autocomplete="off" placeholder="Cole a chave do Google AI Studio"></label>'
       + '<button class="btn-soft primary" id="btn-key-add" type="button"'+(keysState.busy?' disabled':'')+'>'+(keysState.busy?'Testando…':'Testar e salvar')+'</button>'
       + '<div class="hint">A chave é testada com o Google antes de salvar e nunca volta inteira para o navegador. Crie em aistudio.google.com → Get API key.</div>'
       + '</div>';
   }
+  html += '<details class="danger-details"><summary>Zona de risco</summary><div class="danger-zone"><div class="txt"><b>Excluir toda a biblioteca</b>Apaga todos os temas e links. Exige confirmação e PIN.</div><button class="danger-btn" id="btn-delete-all" type="button">'+ICO.trash+'Excluir tudo</button></div></details>';
   configEl.innerHTML = html;
+  document.getElementById('btn-delete-all').addEventListener('click',deleteAllFlow);
 
   var open = document.getElementById('btn-keys-open') || document.getElementById('btn-keys-retry');
   if(open){ open.addEventListener('click', function(){ keysState.error = null; loadKeys(); }); }
@@ -1171,11 +1331,21 @@ function renderConfig(){
 // ---------- router ----------
 function route(){
   var hash = location.hash || '#/';
+  navigation();
   homeEl.classList.add('hidden');
   temaEl.classList.add('hidden');
   relatorioEl.classList.add('hidden');
   revisarEl.classList.add('hidden');
   configEl.classList.add('hidden');
+
+  if(state.error && hash.indexOf('#/config') !== 0){
+    homeEl.classList.remove('hidden');renderHome();return;
+  }
+
+  var linkMatch = hash.match(/^#\/link\/([^/]+)$/);
+  if(linkMatch){
+    temaEl.classList.remove('hidden');renderLink(decodeRoute(linkMatch[1]));window.scrollTo(0,0);return;
+  }
 
   if(hash.indexOf('#/revisar') === 0){
     revisarEl.classList.remove('hidden');
@@ -1200,6 +1370,11 @@ function route(){
     relatorioEl.classList.remove('hidden');
     renderRelatorio(relMatch[1]||null);
   } else {
+    var folderMatch = hash.match(/^#\/pasta\/([^/]+)$/);
+    var nextView = hash === '#/favoritos' ? 'favorites' : hash === '#/pastas' ? 'folders' : folderMatch ? 'folder' : 'all';
+    var nextFolder = folderMatch ? decodeRoute(folderMatch[1]) : '';
+    if(libraryView !== nextView || activeFolder !== nextFolder){ searchQuery='';filterCategory='';filterType='all';visibleLimit=12; }
+    libraryView = nextView;activeFolder = nextFolder;
     homeEl.classList.remove('hidden');
     renderHome();
   }
@@ -1208,7 +1383,7 @@ function route(){
 
 window.addEventListener('hashchange', route);
 
-loadData().then(route);
+Promise.all([loadData(), loadPersonal()]).then(route);
 route(); // primeira pintura já com o estado de "carregando"
 
 })();

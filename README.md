@@ -1,12 +1,23 @@
 # Central de Links
 
-App de leitura ao vivo dos links organizados pelo bot do Telegram [@WillexLinkBot](https://t.me/WillexLinkBot). Lê direto do Supabase — sem build, sem back-end próprio: é um único `index.html` estático.
+App de leitura ao vivo dos links organizados pelo bot do Telegram [@WillexLinkBot](https://t.me/WillexLinkBot). O frontend é estático: `index.html` contém a aplicação e `layout.css` define o layout responsivo inspirado no Fast Summ. O build apenas copia esses dois arquivos para `dist/`, sem dependências. As operações protegidas usam Edge Functions no Supabase.
 
 ## Telas
 
-- **Início** — busca, contagem por tema, lista de recentes.
+- **Biblioteca** — busca sem distinção de acentos, filtros por categoria e formato, ordenação e carregamento progressivo dos cards.
+- **Pastas por tema** — categorias existentes apresentadas como pastas, com contagem real e acesso sem PIN. Cada link usa sua associação atual no banco, sem duplicar registros. Links com categoria ausente aparecem em "Sem categoria", inclusive no relatório.
+- **Pastas e favoritos** — organização pessoal protegida pelo PIN, com sincronização entre dispositivos pelo contrato descrito em `docs/organization-api.md`.
+- **Leitura** — acesso direto a um link, resumo, referências, imagens, transcrição, PDF e edição da organização.
 - **Tema** — todos os links de uma categoria, com resumo gerado por IA, legenda original (quando o Instagram permite raspar) e links citados dentro do post.
 - **Relatório** — visão para leitura/impressão manual, completa ou por tema (`#/relatorio/<categoria>`).
+- **Revisão** — confirmar a sugestão da IA, manter a categoria ou mover o conteúdo.
+- **Configurações** — gerenciamento de chaves e zona de risco recolhida, mantendo confirmação e PIN nas exclusões.
+
+## Organização sincronizada
+
+`manage-admin` implementa `organization_get` e `organization_save`, protegidas pelo PIN existente. A tabela `library_organization` tem RLS e não permite acesso direto aos papéis públicos. Revisões impedem que um dispositivo sobrescreva alterações recentes de outro. Não há fallback em `localStorage`. Use "Atualizar" ou reabra o site para buscar alterações feitas em outro dispositivo.
+
+Fontes e migração estão em `supabase/`. O contrato e a validação realizada estão em `docs/organization-api.md`. A revisão dos temas está em `docs/classification-review.md`.
 
 ## Como funciona
 
@@ -21,8 +32,20 @@ A chave `anon` embutida no `index.html` **não é um segredo** — ela só abre 
 
 ## Deploy
 
-Site estático puro — sem etapa de build. Qualquer host de estáticos serve (Vercel, Netlify, GitHub Pages). No Vercel: importar este repositório, sem configurar nada (framework: "Other" / sem build command), deploy direto.
+No Vercel, `vercel.json` configura "Other", executa `node build.cjs` e publica somente `dist/`. As fontes de Edge Functions, testes e documentação não são servidas pelo site. Para outro host estático, execute o mesmo comando e publique essa pasta.
 
-## Limitação conhecida
+## Validação
 
-Não existe geração de PDF a partir do próprio site (é só uma visão de leitura). Um PDF de verdade, como arquivo baixável, é gerado fora deste projeto.
+O PDF é gerado no navegador com jsPDF, por link, categoria, biblioteca ou seleção filtrada.
+
+O teste `tests/library.cjs` inicia um servidor temporário, intercepta as APIs e não escreve no banco real. Cobre busca, filtros, telas pequenas, favoritos, pastas, classificação, transcrição, download de PDF, o contrato de sincronização entre dois navegadores, conflito de revisão e recuperação de falhas.
+
+```sh
+npm install --no-save --package-lock=false playwright@1.62.1
+npx playwright install chromium
+node tests/library.cjs
+```
+
+Para usar um Edge já instalado, configure `PLAYWRIGHT_CHANNEL=msedge`. Também é possível usar uma instalação existente do Playwright via `NODE_PATH`.
+
+O backend tem testes de validação e conflito: `node --test tests/organization.mjs` (Node 24). A validação real no Supabase confirmou leitura e gravação com PIN, conflito HTTP 409 e recusa HTTP 401 sem PIN.
