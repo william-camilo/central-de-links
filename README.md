@@ -1,6 +1,6 @@
 # Central de Links
 
-App de leitura ao vivo dos links organizados pelo bot do Telegram [@WillexLinkBot](https://t.me/WillexLinkBot). O frontend é estático: `index.html` contém a aplicação e `layout.css` define o layout responsivo inspirado no Fast Summ. O build apenas copia esses dois arquivos para `dist/`, sem dependências. As operações protegidas usam Edge Functions no Supabase.
+App de leitura ao vivo dos links organizados pelo bot do Telegram [@WillexLinkBot](https://t.me/WillexLinkBot). O frontend é estático: `index.html` contém a aplicação, `layout.css` define o layout responsivo inspirado no Fast Summ e `pilot-guides.js` contém as fichas do piloto. O build apenas copia esses três arquivos para `dist/`, sem dependências. As operações protegidas usam Edge Functions no Supabase.
 
 ## Telas
 
@@ -49,3 +49,14 @@ node tests/library.cjs
 Para usar um Edge já instalado, configure `PLAYWRIGHT_CHANNEL=msedge`. Também é possível usar uma instalação existente do Playwright via `NODE_PATH`.
 
 O backend tem testes de validação e conflito: `node --test tests/organization.mjs` (Node 24). A validação real no Supabase confirmou leitura e gravação com PIN, conflito HTTP 409 e recusa HTTP 401 sem PIN.
+
+## Guias de IA e pesquisa global
+
+- Pesquisa no topo em todas as telas, com normalização de caixa e acentos. Inclui títulos, resumo, legenda, transcrição, textos da tela, ferramentas, referências, categorias e organização pessoal quando desbloqueada. O carregamento paginado mantém o corpus acessível acima do limite padrão de linhas do REST.
+- Termos são combinados, com equivalências limitadas para objetivos comuns (por exemplo, animar uma foto, fotografar perfume e canal sem aparecer). Não é busca semântica por embeddings.
+- `#/guias` apresenta Prompts, Imagens, Vídeos, Agentes, Automação e Sites. `#/assunto/<id>` filtra os links; as categorias persistidas não são modificadas. A classificação adicional é sugerida por palavras-chave, pode ter falsos positivos e permite mais de um assunto por link.
+- `pilot-guides.js` contém 10 fichas editoriais preparadas com transcrições e textos extraídos. Cada ficha distingue comandos citados, roteiro da fonte, lacunas e prompts sugeridos. Imagens são prévias originais, não resultados de execução dos prompts. Uma ficha sem instruções suficientes é apresentada como roteiro parcial.
+- O Telegram e o ajudante Termux permanecem no fluxo existente. Novos links entram nos filtros por conteúdo; a criação automática de novas fichas detalhadas não faz parte deste piloto.
+- Filtros de análise distinguem aguardando/em andamento, analisado, indisponível/falha e revisão. Revisão inclui classificação sinalizada e roteiros parciais do piloto.
+
+Verificações locais: `node tests/discovery.cjs`, `node --test tests/organization.mjs` e `node build.cjs`. A suíte `tests/library.cjs` exige um navegador Playwright instalado.

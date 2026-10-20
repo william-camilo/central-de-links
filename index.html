@@ -234,6 +234,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 <aside class="sidebar" id="sidebar" aria-label="Menu principal"></aside>
 <div class="main-column">
 <header class="workspace-top"><div class="breadcrumbs">Meu espaço <span>/</span><b id="breadcrumb">Biblioteca</b></div><div class="top-actions"><button class="btn-soft desktop-action" id="refresh-library" type="button">Atualizar links</button><a class="icon-btn" href="#/config" aria-label="Configurações">⚙</a></div></header>
+<form class="global-search" id="global-search-form" role="search"><label for="global-search-input">Pesquisar em toda a biblioteca</label><div class="global-search-control"><input id="global-search-input" type="search" placeholder="Digite qualquer palavra ou trecho…" autocomplete="off" aria-describedby="global-search-hint"><button type="submit">Pesquisar</button></div><small id="global-search-hint">Títulos, resumos, transcrições, textos da tela e referências. Maiúsculas e acentos não fazem diferença.</small></form>
 <div class="mobile-brand"><span class="brand-mark" aria-hidden="true">CL</span>Central de Links</div>
 <nav class="mobile-nav" id="mobile-nav" aria-label="Menu principal no celular"></nav>
 <main class="app" id="main-content" tabindex="-1">
@@ -254,6 +255,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="pilot-guides.js"></script>
 <script>
 (function(){
 "use strict";
@@ -646,12 +648,18 @@ function wireImageDownloadButtons(root){
 }
 
 // ---------- data ----------
+function loadLinksPage(offset,acc){
+  return sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,transcript,media_type,created_at,processed_at,video_status,screen_text,tools_cited,needs_review,pending_category,review_reason,category_confidence,category_locked,summary_inferred,cited_links(id,url,label),link_images(id,url,position)').eq('status','processed').order('processed_at',{ascending:false}).order('id').range(offset,offset+499).then(function(res){
+    if(res.error)throw res.error;
+    var rows=res.data||[],all=acc.concat(rows);
+    return rows.length===500?loadLinksPage(offset+500,all):{data:all};
+  });
+}
 function loadData(){
   if(!sb){ state.error = new Error('Não foi possível carregar a conexão.'); return Promise.resolve(); }
   return Promise.all([
     sb.from('categories').select('id,name,color,created_at').order('created_at'),
-    sb.from('links').select('id,category_id,raw_url,normalized_url,title,caption,summary,media_type,created_at,processed_at,video_status,screen_text,tools_cited,needs_review,pending_category,review_reason,category_confidence,category_locked,summary_inferred,cited_links(id,url,label),link_images(id,url,position)')
-      .eq('status','processed').order('processed_at',{ascending:false})
+    loadLinksPage(0,[])
   ]).then(function(results){
     var catRes = results[0], linkRes = results[1];
     if(catRes.error) throw catRes.error;
@@ -678,6 +686,7 @@ function themeCategories(){
 // ---------- library navigation and personal organization ----------
 var personal = { folders: [], links: {} };
 var personalReady = false;
+var activeTopic = '', topicView = false, filterAnalysis = 'all';
 var searchQuery = '', filterCategory = '', filterType = 'all', sortOrder = 'recent', visibleLimit = 12;
 var libraryView = 'all', activeFolder = '';
 var dialogReturnFocus = null;
@@ -752,6 +761,86 @@ function metadata(id){ return Object.prototype.hasOwnProperty.call(personal.link
 function safeUrl(url){ try{ var parsed = new URL(url); return /^https?:$/.test(parsed.protocol) ? parsed.href : '#'; }catch(e){ return '#'; } }
 function decodeRoute(value){ try{return decodeURIComponent(value);}catch(e){return '';} }
 function normalizeSearch(value){ return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function matchesAnalysis(l,status){
+  if(status==='all')return true;
+  if(status==='review')return !!l.needs_review||!!(guideFor(l)&&!guideFor(l).complete);
+  if(status==='pending')return ['pending','downloading','analyzing'].indexOf(l.video_status)!==-1;
+  if(status==='unavailable')return ['failed','no_video'].indexOf(l.video_status)!==-1;
+  return l.video_status==='done';
+}
+function analysisBadge(l){
+  var names={pending:'Aguardando envio',downloading:'Baixando / enviando',analyzing:'Análise em andamento',done:'Vídeo analisado',failed:'Análise falhou',no_video:'Acesso indisponível'};
+  var name=names[l.video_status];
+  return (name?'<span class="analysis-badge">'+name+'</span>':'')+(guideFor(l)&&!guideFor(l).complete?'<span class="analysis-badge review">Roteiro parcial · precisa de revisão</span>':'');
+}
+var SEARCH_ALIASES = {
+  faceless:['sem aparecer','sem mostrar','sem rosto','canal dark','faceless'],
+  animar:['animar','animacao','animacoes','movimento'],
+  fotografar:['fotografar','fotografia','foto','fotos'],
+  foto:['foto','fotos','imagem','imagens','retrato'],
+  criar:['criar','criacao','crie','gerar','geracao','produzir'],
+  video:['video','videos'],
+  site:['site','sites','pagina','paginas']
+};
+function searchTerms(query){
+  var words=normalizeSearch(query).replace(/sem aparecer/g,'faceless').trim().split(/\s+/).filter(Boolean);
+  var meaningful=words.filter(function(t){return !/^(a|o|as|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|para|por|e)$/.test(t);});
+  return meaningful.length?meaningful:words;
+}
+function matchesQuery(text,terms){return terms.every(function(t){return (SEARCH_ALIASES[t]||[t]).some(function(word){return text.indexOf(word)!==-1;});});}
+function searchSnippet(l){
+  if(!searchQuery.trim())return '';
+  var terms=searchTerms(searchQuery),fields=[['Transcrição',l.transcript],['Texto da tela',(l.screen_text||[]).join(' · ')],['Referências',(l.cited_links||[]).map(function(c){return (c.label||'')+' '+c.url;}).join(' · ')]];
+  for(var i=0;i<fields.length;i++){
+    var text=String(fields[i][1]||''),normalized=normalizeSearch(text),pos=-1;
+    terms.some(function(t){return (SEARCH_ALIASES[t]||[t]).some(function(w){pos=normalized.indexOf(w);return pos!==-1;});});
+    if(pos!==-1)return '<p class="search-match"><b>'+fields[i][0]+':</b> '+(pos>50?'…':'')+esc(text.slice(Math.max(0,pos-50),pos+140))+(text.length>pos+140?'…':'')+'</p>';
+  }
+  return '';
+}
+var TOPICS = [
+  {id:'prompts',name:'Prompts',description:'Comandos, instruções e formas de conversar com IA.',examples:'Ex.: resumir um livro e preparar uma instrução reutilizável.',pattern:/prompt|comando|markdown|mapa mental|resumir livro/},
+  {id:'imagens',name:'Imagens',description:'Fotografia, ilustração, capas e edição visual.',examples:'Ex.: capa de catálogo, foto de produto e iluminação.',pattern:/imagem|imagens|foto|ilustra|capa de revista|design|infogra/},
+  {id:'videos',name:'Vídeos',description:'Criação, edição, legendas, tradução e dublagem.',examples:'Ex.: traduzir uma apresentação de produto.',pattern:/dublagem|legenda|tradutor de video|criar video|gerar video|animacao|animacoes|thumbnail/},
+  {id:'agentes',name:'Agentes',description:'Assistentes personalizados, Gems e equipes de IA.',examples:'Ex.: assistente para atendimento e vendas.',pattern:/agente|assistente|\bgems?\b|clone.*ia|claude code/},
+  {id:'automacao',name:'Automação',description:'Integrações, tarefas repetitivas e fluxos de trabalho.',examples:'Ex.: organizar demandas e acompanhar tarefas.',pattern:/automa|workflow|fluxo de trabalho|\bn8n\b|webhook|integrac|plugins|mcp/},
+  {id:'sites',name:'Sites',description:'Criação de páginas, interfaces, aplicativos e testes.',examples:'Ex.: página de produto e teste no celular.',pattern:/site|interface|responsiv|webgpu|replit|aplicativo|web design/}
+];
+function guideFor(l){return (window.CENTRAL_GUIDES||{})[l.id]||null;}
+function searchableText(l,m,c){
+  var g=guideFor(l),extra=g?JSON.stringify(g):'';
+  return normalizeSearch([l.title,l.summary,l.caption,l.transcript,l.raw_url,l.normalized_url,l.media_type,c?c.name:'',extra]
+    .concat(m.tags||[],l.tools_cited||[],l.screen_text||[],(l.cited_links||[]).map(function(r){return (r.label||'')+' '+(r.url||'');}),personal.folders.filter(function(f){return f.id===m.folder;}).map(function(f){return f.name;})).join(' '));
+}
+function linkTopics(l){
+  var g=guideFor(l);if(g)return g.topics;
+  var cat=catById(l.category_id);
+  if(!cat||!/(tecnologia|inteligencia|\bia\b)/.test(normalizeSearch(cat.name)))return [];
+  var text=normalizeSearch([l.title,l.summary].concat(l.tools_cited||[]).join(' '));
+  return TOPICS.filter(function(t){return t.pattern.test(text);}).map(function(t){return t.id;});
+}
+function renderGuides(){
+  if(!state.loaded){homeEl.innerHTML=stateBlock('Carregando seus guias…');return;}
+  var pilot=state.links.filter(function(l){return guideFor(l);});
+  homeEl.innerHTML='<section class="guide-head"><span class="eyebrow">SUA BIBLIOTECA EM AÇÃO</span><h1>Aprenda. Teste. Aplique.</h1><p>Encontre um assunto e transforme suas referências em um próximo passo.</p></section>'
+    +'<div class="folder-grid topic-grid">'+TOPICS.map(function(t){var n=state.links.filter(function(l){return linkTopics(l).indexOf(t.id)!==-1;}).length;return '<a class="folder-card" href="#/assunto/'+t.id+'"><span class="folder-top">'+uiIcon('folder')+'<small>'+n+' links</small></span><b>'+t.name+'</b><span>'+t.description+'</span><small>'+t.examples+'</small></a>';}).join('')+'</div>'
+    +'<p class="theme-description">Novos links enviados pelo <a href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">Telegram</a> continuam no fluxo de análise existente. As fichas detalhadas abaixo são o piloto editorial; os demais links mantêm seus resumos e fontes.</p>'
+    +'<p class="theme-description">Assuntos sugeridos pelo conteúdo, sem mover as categorias existentes. Um link pode aparecer em várias pastas.</p>'
+    +'<section><div class="section-heading"><h2>10 fichas para começar</h2><span class="count-chip">'+pilot.length+' disponíveis</span></div><p class="theme-description">Roteiros preparados a partir das transcrições e textos já extraídos. Exemplos sugeridos estão identificados; nem todo vídeo fornece um tutorial completo.</p><div class="library-grid">'+pilot.map(recentCard).join('')+'</div></section>';
+}
+function guideSection(l){
+  var g=guideFor(l);if(!g)return '';
+  return '<section class="application-guide" aria-label="Ficha de aplicação"><div class="guide-heading"><span class="eyebrow">FICHA DE APLICAÇÃO · PILOTO</span><h2>Como aproveitar este conteúdo</h2></div>'
+    +'<div class="guide-source">Roteiro editorial baseado no conteúdo extraído em 20/10/2026. Não foi testado na ferramenta citada.</div>'
+    +'<h3>Resultado esperado</h3><p>'+esc(g.goal)+'</p><h3>Ferramentas</h3><div class="tool-chips">'+g.tools.map(function(t){return '<span class="tool-chip">'+esc(t)+'</span>';}).join('')+'</div>'
+    +'<h3>'+ (g.complete?'Passo a passo descrito no conteúdo':'O que o conteúdo permite preparar')+'</h3><ol>'+g.steps.map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ol>'
+    +(g.gap?'<p class="guide-gap"><strong>Falta na fonte:</strong> '+esc(g.gap)+'</p>':'')
+    +(g.extracted.length?'<h3>Comandos citados na fonte</h3><p class="guide-source">Trechos da transcrição ou da tela. A citação não garante que sejam comandos oficiais da ferramenta.</p>'+g.extracted.map(function(t){return '<div class="prompt-box"><pre>'+esc(t)+'</pre><button class="vid-copy" type="button" data-copy-excerpt="'+esc(t)+'">Copiar comando citado</button></div>';}).join(''):'<p class="guide-source">O conteúdo extraído não contém um prompt completo para copiar.</p>')
+    +'<h3>Exemplo de aplicação</h3><p>'+esc(g.example)+'</p><div class="suggested-prompt"><span class="guide-source">Sugestão criada para este guia · não é uma transcrição</span><div class="prompt-box"><pre>'+esc(g.prompt)+'</pre><button class="vid-copy" type="button" data-copy-excerpt="'+esc(g.prompt)+'">Copiar sugestão</button></div></div>'
+    +'<figure class="guide-visual">'+((l.link_images||[]).length?'<img src="'+esc(safeUrl(l.link_images[0].url))+'" loading="lazy" alt="Prévia do conteúdo original"><figcaption>Referência visual do conteúdo original. O exemplo sugerido acima ainda não foi executado.</figcaption>':'<div class="guide-visual-flow"><span>01 · Escolher objetivo</span><span>02 · Preparar instrução</span><span>03 · Testar e revisar</span></div><figcaption>Esquema ilustrativo para aplicar esta ficha; a fonte não tem uma imagem salva.</figcaption>')+'</figure>'
+    +'<a class="text-action" target="_blank" rel="noopener" href="'+esc(safeUrl(l.raw_url))+'">Conferir conteúdo original ↗</a></section>';
+}
+
 function personalOptions(selected){ return '<option value="">Sem pasta</option>'+personal.folders.map(function(f){ return '<option value="'+esc(f.id)+'"'+(selected===f.id?' selected':'')+'>'+esc(f.name)+'</option>'; }).join(''); }
 function storageNote(){ return '<div class="storage-note">'+uiIcon('device')+(personalReady?'<span>Pastas, favoritos e tags sincronizados entre dispositivos</span>':'<button class="text-action" type="button" data-unlock>Desbloquear organização com PIN</button>')+'</div>'; }
 
@@ -759,6 +848,7 @@ function navigation(){
   var hash = location.hash || '#/';
   var nav = [
     ['#/','grid','Todos os links',state.links.length],
+    ['#/guias','folder','Guias de IA',10],
     ['#/favoritos','star','Favoritos',personalReady?state.links.filter(function(l){return metadata(l.id).favorite;}).length:'—'],
     ['#/pastas','folder','Temas e pastas',themeCategories().length],
     ['#/revisar','review','Para revisar',state.links.filter(function(l){return l.needs_review;}).length],
@@ -776,7 +866,7 @@ function navigation(){
   if(!personal.folders.length)html += '<span class="nav-empty">Crie pastas para reunir suas referências por projeto ou interesse.</span>';
   html += '</nav></div><div class="sidebar-bottom"><a href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">'+uiIcon('send')+'<span>Telegram<small>Envie novos links para o bot</small></span></a><a class="nav-item" href="#/config"'+(hash==='#/config'?' aria-current="page"':'')+'>'+ICO.gear+'Configurações</a></div>';
   document.getElementById('sidebar').innerHTML = html;
-  var mobileLabels = ['Links','Favoritos','Pastas','Revisar','Relatório'];
+  var mobileLabels = ['Links','Guias IA','Favoritos','Pastas','Revisar','Relatório'];
   document.getElementById('mobile-nav').innerHTML = nav.map(function(n,i){return '<a href="'+n[0]+'"'+(hash===n[0]?' aria-current="page"':'')+'>'+navIcon(n[1])+'<span>'+mobileLabels[i]+'</span></a>';}).join('');
   var title = nav.find(function(n){return n[0]===hash;});
   var folder = personal.folders.find(function(f){return '#/pasta/'+encodeURIComponent(f.id)===hash;});
@@ -796,6 +886,7 @@ function thematicFolders(){
 }
 function emptyFolders(){return '<div class="folder-empty"><div><b>Um lugar para cada projeto.</b>Crie uma pasta e adicione links pela tela de leitura.</div><button class="btn-soft primary" data-new-folder type="button">'+uiIcon('plus')+'Criar pasta</button></div>';}
 function renderHome(){
+  document.getElementById('global-search-input').value=searchQuery;
   if(!state.loaded && !state.error){homeEl.innerHTML=stateBlock('Carregando sua biblioteca…');return;}
   if(state.error){homeEl.innerHTML=stateBlock('Não foi possível atualizar seus links.<div class="empty-actions"><button class="btn-soft primary" type="button" data-retry>Tentar novamente</button></div>');return;}
   if(!personalReady && libraryView!=='all' && libraryView!=='folders'){
@@ -813,39 +904,45 @@ function renderHome(){
     html += '</section>';
     homeEl.innerHTML=html;return;
   }
-  if(libraryView==='all'&&!searchQuery&&!filterCategory&&filterType==='all'){
+  if(libraryView==='all'&&!activeTopic&&!searchQuery&&!filterCategory&&filterType==='all'){
     html += '<section class="hero"><div class="landscape" aria-hidden="true"><div class="sun"></div><div class="mountains"></div><div class="grid-floor"></div></div><div class="hero-copy"><div class="eyebrow">SEU UNIVERSO DE CONTEÚDO</div><h1>Boas ideias.<br><em>Sempre à mão.</em></h1><p>Salve, organize e reencontre o que importa.</p><a class="primary-link" href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">'+uiIcon('plus')+'Adicionar pelo Telegram</a></div><div class="hero-monogram" aria-hidden="true"><span>CL</span></div></section>';
+    html += '<section class="guide-teaser"><div><span class="eyebrow">DO LINK À PRÁTICA</span><h2>Explore seus guias de IA</h2><p>Prompts, imagens, vídeos, agentes, automação e sites. Comece pelas 10 fichas do piloto.</p></div><a class="primary-link" href="#/guias">Abrir pastas e exemplos →</a></section>';
     html += '<section><div class="section-heading"><h2>Seus links por tema</h2><a class="text-action" href="#/pastas">Temas e pastas '+uiIcon('arrow')+'</a></div>'+thematicFolders()+'</section>';
   }
   var reviewCount=state.links.filter(function(l){return l.needs_review;}).length;
   if(reviewCount&&libraryView==='all'&&!searchQuery) html += '<a href="#/revisar" class="review-cta">'+uiIcon('review')+'<span class="review-message">'+reviewCount+' links para revisar<small>A IA sugere a categoria. Você confirma.</small></span>'+uiIcon('arrow')+'</a>';
   var filtered=filteredLibrary();
-  var heading=libraryView==='favorites'?'Favoritos':libraryView==='folder'?currentFolder.name:'Sua biblioteca';
+  var topic=TOPICS.find(function(t){return t.id===activeTopic;});
+  var heading=topic?topic.name:libraryView==='favorites'?'Favoritos':libraryView==='folder'?currentFolder.name:searchQuery?'Resultados da pesquisa':'Sua biblioteca';
+  if(topic)html+='<a class="text-action" href="#/guias">← Todos os assuntos de IA</a><p class="theme-description">'+esc(topic.description)+' Um link pode aparecer em mais de um assunto. A categoria original é preservada.</p>';
   html += '<section><div class="section-heading"><div class="section-title"><h1>'+esc(heading)+'</h1><span class="count-chip">'+filtered.length+' links</span></div><button type="button" class="text-action" id="btn-pdf-home">'+ICO.report+'Gerar PDF</button></div>';
-  html += '<div class="library-toolbar"><label class="search">'+ICO.search+'<input id="search-input" type="search" aria-label="Buscar links, categorias e tags" placeholder="Buscar links, temas ou tags…" value="'+esc(searchQuery)+'"></label><select class="filter-select" id="category-filter" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option>'+state.categories.map(function(c){return '<option value="'+esc(c.id)+'"'+(filterCategory===c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select><select class="filter-select" id="sort-order" aria-label="Ordenar links"><option value="recent"'+(sortOrder==='recent'?' selected':'')+'>Mais recentes</option><option value="title"'+(sortOrder==='title'?' selected':'')+'>Título A–Z</option></select></div>';
+  html += '<div class="library-toolbar"><label class="search">'+ICO.search+'<input id="search-input" type="search" aria-label="Buscar links, categorias e tags" placeholder="O que você quer fazer? Ex.: animar foto" value="'+esc(searchQuery)+'"></label><select class="filter-select" id="category-filter" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option>'+state.categories.map(function(c){return '<option value="'+esc(c.id)+'"'+(filterCategory===c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select><select class="filter-select" id="sort-order" aria-label="Ordenar links"><option value="recent"'+(sortOrder==='recent'?' selected':'')+'>Mais recentes</option><option value="title"'+(sortOrder==='title'?' selected':'')+'>Título A–Z</option></select></div>';
+  html += '<label class="analysis-filter-label">Estado do conteúdo <select class="filter-select" id="analysis-filter">'+[['all','Todos os estados'],['pending','Aguardando / em andamento'],['done','Analisado'],['unavailable','Acesso indisponível / falhou'],['review','Precisa de revisão']].map(function(o){return '<option value="'+o[0]+'"'+(filterAnalysis===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></label>';
   html += '<div class="filter-row"><div class="type-filters" aria-label="Filtrar por formato">'+[['all','Todos'],['video','Vídeos'],['image','Imagens'],['link','Outros links']].map(function(t){return '<button type="button" data-filter-type="'+t[0]+'" aria-pressed="'+(filterType===t[0])+'">'+t[1]+'</button>';}).join('')+'</div>'+storageNote()+'</div>';
   html += '<div class="library-grid" id="library-results">'+(filtered.length?filtered.slice(0,visibleLimit).map(recentCard).join(''):stateBlock(libraryView==='favorites'&&!searchQuery?'Marque a estrela de um link para encontrá-lo aqui.':'Nenhum link encontrado para este filtro.'))+'</div><div class="more-row">'+(filtered.length>visibleLimit?'<button class="btn-soft" type="button" id="show-more">Mostrar mais links ('+(filtered.length-visibleLimit)+')</button>':'')+'</div></section>';
   html += '<div class="library-bottom"><span>'+state.links.length+' links · '+state.categories.length+' categorias</span><a href="#/relatorio">Abrir relatório completo '+uiIcon('arrow')+'</a></div>';
   homeEl.innerHTML=html;
   var input=document.getElementById('search-input');
-  input.addEventListener('input',function(){searchQuery=input.value;visibleLimit=12;updateResults();});
+  input.addEventListener('input',function(){searchQuery=input.value;document.getElementById('global-search-input').value=searchQuery;visibleLimit=12;updateResults();});
   document.getElementById('category-filter').addEventListener('change',function(e){filterCategory=e.target.value;visibleLimit=12;updateResults();});
+  document.getElementById('analysis-filter').addEventListener('change',function(e){filterAnalysis=e.target.value;visibleLimit=12;updateResults();});
   document.getElementById('sort-order').addEventListener('change',function(e){sortOrder=e.target.value;updateResults();});
   document.getElementById('btn-pdf-home').addEventListener('click',function(){
-    if(libraryView==='favorites'||libraryView==='folder'||searchQuery||filterCategory||filterType!=='all')generatePdf({type:'selection',ids:filteredLibrary().map(function(l){return l.id;}),title:heading});
+    if(filterAnalysis!=='all'||activeTopic||libraryView==='favorites'||libraryView==='folder'||searchQuery||filterCategory||filterType!=='all')generatePdf({type:'selection',ids:filteredLibrary().map(function(l){return l.id;}),title:heading});
     else openHomePdfPicker();
   });
 }
 function filteredLibrary(){
-  var q=normalizeSearch(searchQuery);
+  var terms=searchTerms(searchQuery);
   var items=state.links.filter(function(l){
     var m=metadata(l.id),c=catById(l.category_id);
     var format=isVideo(l.media_type)?'video':/image|photo|carousel|carrossel/i.test(l.media_type||'')?'image':'link';
-    return (libraryView!=='favorites'||m.favorite)&&(libraryView!=='folder'||m.folder===activeFolder)&&(!filterCategory||l.category_id===filterCategory)&&(filterType==='all'||filterType===format)&&(!q||normalizeSearch([l.title,l.summary,l.caption,l.raw_url,c?c.name:''].concat(m.tags||[],l.tools_cited||[]).join(' ')).indexOf(q)!==-1);
+    return matchesAnalysis(l,filterAnalysis)&&(!activeTopic||linkTopics(l).indexOf(activeTopic)!==-1)&&(libraryView!=='favorites'||m.favorite)&&(libraryView!=='folder'||m.folder===activeFolder)&&(!filterCategory||l.category_id===filterCategory)&&(filterType==='all'||filterType===format)&&matchesQuery(searchableText(l,m,c),terms);
   });
   return sortOrder==='title'?items.slice().sort(function(a,b){return (a.title||'').localeCompare(b.title||'','pt-BR');}):items;
 }
 function updateResults(){
+  if(topicView){renderGuides();return;}
   var items=filteredLibrary();
   document.getElementById('library-results').innerHTML=items.length?items.slice(0,visibleLimit).map(recentCard).join(''):stateBlock('Nenhum link encontrado para este filtro.');
   homeEl.querySelector('.count-chip').textContent=items.length+' links';
@@ -856,7 +953,7 @@ function updateResults(){
 function recentCard(l){
   var cat=catById(l.category_id),m=metadata(l.id),cited=(l.cited_links||[]).length;
   var images=(l.link_images||[]).slice().sort(function(a,b){return a.position-b.position;});
-  return '<article class="library-card"><div class="library-card-top"><span class="source-icon">'+(images.length?'<img src="'+esc(safeUrl(images[0].url))+'" loading="lazy" alt="">':uiIcon(isVideo(l.media_type)?'video':'tag'))+'</span><span class="source-domain">'+esc(domainOf(l.raw_url))+'</span><button class="icon-plain favorite-btn" type="button" data-favorite="'+esc(l.id)+'" aria-label="'+(m.favorite?'Remover dos favoritos: ':'Favoritar: ')+esc(l.title||'Link')+'" aria-pressed="'+!!m.favorite+'">'+uiIcon('star')+'</button></div><a class="library-title" href="#/link/'+encodeURIComponent(l.id)+'">'+esc(l.title||'Conteúdo sem título')+'</a><p class="library-summary">'+esc(l.summary||l.caption||'Abra o conteúdo para consultar os links e referências disponíveis.')+'</p>'+(m.tags.length?'<div class="library-tags">'+m.tags.slice(0,4).map(function(t){return '<span class="library-tag">#'+esc(t)+'</span>';}).join('')+'</div>':'')+'<div class="library-card-bottom">'+(cat?'<a href="#/tema/'+encodeURIComponent(cat.id)+'">'+esc(cat.name)+'</a>':'<span>Sem categoria</span>')+(l.needs_review?'<a class="review-chip" href="#/revisar">Revisar tema</a>':'<span>'+cited+' referências · '+esc(timeAgo(l.processed_at))+'</span>')+'</div></article>';
+  return '<article class="library-card"><div class="library-card-top"><span class="source-icon">'+(images.length?'<img src="'+esc(safeUrl(images[0].url))+'" loading="lazy" alt="">':uiIcon(isVideo(l.media_type)?'video':'tag'))+'</span><span class="source-domain">'+esc(domainOf(l.raw_url))+'</span><button class="icon-plain favorite-btn" type="button" data-favorite="'+esc(l.id)+'" aria-label="'+(m.favorite?'Remover dos favoritos: ':'Favoritar: ')+esc(l.title||'Link')+'" aria-pressed="'+!!m.favorite+'">'+uiIcon('star')+'</button></div><a class="library-title" href="#/link/'+encodeURIComponent(l.id)+'">'+esc(l.title||'Conteúdo sem título')+'</a><p class="library-summary">'+esc(l.summary||l.caption||'Abra o conteúdo para consultar os links e referências disponíveis.')+'</p>'+searchSnippet(l)+(m.tags.length?'<div class="library-tags">'+m.tags.slice(0,4).map(function(t){return '<span class="library-tag">#'+esc(t)+'</span>';}).join('')+'</div>':'')+(guideFor(l)?'<a class="guide-card-badge" href="#/link/'+encodeURIComponent(l.id)+'">Ficha com passos e exemplo →</a>':'')+analysisBadge(l)+'<div class="library-card-bottom">'+(cat?'<a href="#/tema/'+encodeURIComponent(cat.id)+'">'+esc(cat.name)+'</a>':'<span>Sem categoria</span>')+(l.needs_review?'<a class="review-chip" href="#/revisar">Revisar tema</a>':'<span>'+cited+' referências · '+esc(timeAgo(l.processed_at))+'</span>')+'</div></article>';
 }
 function openFolderDialog(id){
   if(!personalReady){ensurePersonal().then(function(){navigation();openFolderDialog(id);}).catch(function(err){notify(err.message,true);});return;}
@@ -909,6 +1006,10 @@ function renderLink(id){
 
 document.addEventListener('click',function(e){
   var button=e.target.closest('button');if(!button)return;
+  if(button.hasAttribute('data-copy-excerpt')){
+    var excerpt=button.getAttribute('data-copy-excerpt');
+    (navigator.clipboard?navigator.clipboard.writeText(excerpt):Promise.reject()).then(function(){button.textContent='Copiado ✓';},function(){button.textContent='Não foi possível copiar';});
+  }
   if(button.hasAttribute('data-new-folder'))openFolderDialog();
   if(button.hasAttribute('data-edit-folder'))openFolderDialog(button.dataset.editFolder);
   if(button.hasAttribute('data-close-dialog'))document.getElementById('library-dialog').close();
@@ -928,6 +1029,15 @@ document.addEventListener('click',function(e){
     savePersonal(nextState).then(function(){navigation();renderHome();notify('Pasta removida. Seus links foram preservados.');}).catch(function(err){notify(err.message,true);});
   }
 });
+function globalSearch(){
+  searchQuery=document.getElementById('global-search-input').value;
+  activeTopic='';topicView=false;libraryView='all';activeFolder='';filterCategory='';filterType='all';filterAnalysis='all';visibleLimit=12;
+  if(location.hash!=='#/')location.hash='#/';
+  else {renderHome();navigation();}
+}
+document.getElementById('global-search-form').addEventListener('submit',function(e){e.preventDefault();globalSearch();document.getElementById('main-content').scrollIntoView({block:'start'});});
+document.getElementById('global-search-input').addEventListener('input',globalSearch);
+
 document.getElementById('library-dialog').addEventListener('close',function(){
   var folderSelect=document.getElementById('link-folder');if(folderSelect){var selected=folderSelect.value;folderSelect.innerHTML=personalOptions(selected);}
   if(dialogReturnFocus&&dialogReturnFocus.isConnected)dialogReturnFocus.focus();
@@ -994,11 +1104,12 @@ function videoSection(l){
   if(!st){ return ''; }
   var html = '';
   if(st === 'pending' || st === 'downloading' || st === 'analyzing'){
-    html += '<div class="vid-status"><span>🎬</span><span>'+(st==='pending' ? 'Na fila para análise do vídeo (fala e textos da tela)' : 'Analisando o vídeo agora…')+'</span></div>';
+    html += '<div class="vid-status"><span>🎬</span><span>'+(st==='pending' ? 'Na fila — aguardando o ajudante do Termux enviar o vídeo.' : st==='downloading' ? 'Baixando e enviando o vídeo pelo ajudante…' : 'Analisando fala e textos da tela…')+'</span></div>';
   } else if(st === 'failed' || st === 'no_video'){
-    html += '<div class="vid-status warn"><span>⚠️</span><span>Vídeo não disponível para análise — resumo baseado na legenda.</span></div>';
+    html += '<div class="vid-status warn"><span>⚠️</span><span>'+(st==='failed'?'A análise falhou após as tentativas disponíveis.':'Vídeo indisponível para análise.')+' A fala e os textos da tela ainda não foram confirmados.</span></div>';
   }
   if(st !== 'done'){ return html; }
+  html += '<div class="vid-status"><span>✓</span><span>Vídeo analisado — resumo gerado por IA a partir do vídeo. Confira comandos e detalhes no original.</span></div>';
   var tools = Array.isArray(l.tools_cited) ? l.tools_cited : [];
   var screen = Array.isArray(l.screen_text) ? l.screen_text : [];
   if(tools.length){
@@ -1008,7 +1119,7 @@ function videoSection(l){
   }
   if(screen.length){
     html += '<details class="vid-details"><summary>Textos que aparecem na tela ('+screen.length+')</summary>'
-      + '<div class="vid-body"><ul>'+screen.map(function(t){ return '<li>'+esc(t)+'</li>'; }).join('')+'</ul></div></details>';
+      + '<div class="vid-body"><p>Trechos extraídos da tela, na ordem capturada. Podem conter erros de leitura ou comandos incompletos.</p><ul>'+screen.map(function(t){ return '<li><span>'+esc(t)+'</span> <button type="button" class="vid-copy" data-copy-excerpt="'+esc(t)+'">Copiar trecho</button></li>'; }).join('')+'</ul></div></details>';
   }
   html += '<details class="vid-details" data-transcript-id="'+esc(l.id)+'"><summary>Transcrição da fala</summary>'
     + '<div class="vid-body">Abrindo…</div></details>';
@@ -1085,6 +1196,7 @@ function itemCard(l){
   } else if(!l.caption && !l.summary){
     html += '<div class="item-note">'+ICO.warn+'<span>O conteúdo não pôde ser lido automaticamente.</span></div>';
   }
+  html += guideSection(l);
   html += videoSection(l);
   if(l.cited_links && l.cited_links.length){
     html += '<div class="cited-list"><div class="item-label">LINKS MENCIONADOS</div>';
@@ -1331,6 +1443,7 @@ function renderConfig(){
 // ---------- router ----------
 function route(){
   var hash = location.hash || '#/';
+  activeTopic='';topicView=false;
   navigation();
   homeEl.classList.add('hidden');
   temaEl.classList.add('hidden');
@@ -1342,6 +1455,9 @@ function route(){
     homeEl.classList.remove('hidden');renderHome();return;
   }
 
+  if(hash==='#/guias'){homeEl.classList.remove('hidden');topicView=true;renderGuides();window.scrollTo(0,0);return;}
+  var topicMatch=hash.match(/^#\/assunto\/([^/]+)$/);
+  if(topicMatch){activeTopic=decodeRoute(topicMatch[1]);libraryView='all';activeFolder='';searchQuery='';filterCategory='';filterType='all';filterAnalysis='all';visibleLimit=12;homeEl.classList.remove('hidden');renderHome();window.scrollTo(0,0);return;}
   var linkMatch = hash.match(/^#\/link\/([^/]+)$/);
   if(linkMatch){
     temaEl.classList.remove('hidden');renderLink(decodeRoute(linkMatch[1]));window.scrollTo(0,0);return;
@@ -1373,7 +1489,7 @@ function route(){
     var folderMatch = hash.match(/^#\/pasta\/([^/]+)$/);
     var nextView = hash === '#/favoritos' ? 'favorites' : hash === '#/pastas' ? 'folders' : folderMatch ? 'folder' : 'all';
     var nextFolder = folderMatch ? decodeRoute(folderMatch[1]) : '';
-    if(libraryView !== nextView || activeFolder !== nextFolder){ searchQuery='';filterCategory='';filterType='all';visibleLimit=12; }
+    if(libraryView !== nextView || activeFolder !== nextFolder){ searchQuery='';filterCategory='';filterType='all';filterAnalysis='all';visibleLimit=12; }
     libraryView = nextView;activeFolder = nextFolder;
     homeEl.classList.remove('hidden');
     renderHome();

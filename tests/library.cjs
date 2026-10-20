@@ -20,9 +20,9 @@ let revision = 0, conflictNext = false, failRest = false, writes = 0;
 
 const server = http.createServer((request,response)=>{
   const name = new URL(request.url,'http://localhost').pathname;
-  if(!['/','/index.html','/layout.css'].includes(name)){response.writeHead(404);response.end();return;}
-  response.setHeader('Content-Type',name.endsWith('.css')?'text/css':'text/html; charset=utf-8');
-  response.end(fs.readFileSync(path.join(root,name==='/layout.css'?'layout.css':'index.html')));
+  if(!['/','/index.html','/layout.css','/pilot-guides.js'].includes(name)){response.writeHead(404);response.end();return;}
+  response.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html; charset=utf-8');
+  response.end(fs.readFileSync(path.join(root,name==='/'?'index.html':name.slice(1))));
 });
 
 (async()=>{
