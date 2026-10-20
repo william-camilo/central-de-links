@@ -57,6 +57,7 @@ O backend tem testes de validação e conflito: `node --test tests/organization.
 - `#/guias` apresenta Prompts, Imagens, Vídeos, Agentes, Automação e Sites. `#/assunto/<id>` filtra os links; as categorias persistidas não são modificadas. A classificação adicional é sugerida por palavras-chave, pode ter falsos positivos e permite mais de um assunto por link.
 - `pilot-guides.js` contém 10 fichas editoriais preparadas com transcrições e textos extraídos. Cada ficha distingue comandos citados, roteiro da fonte, lacunas e prompts sugeridos. Imagens são prévias originais, não resultados de execução dos prompts. Uma ficha sem instruções suficientes é apresentada como roteiro parcial.
 - O Telegram e o ajudante Termux permanecem no fluxo existente. Novos links entram nos filtros por conteúdo; a criação automática de novas fichas detalhadas não faz parte deste piloto.
+- A ficha dos comandos de imagem do ChatGPT inclui três exemplos antes/depois com uma pessoa fictícia, prompt completo usado e download das imagens. O plano para gerar exemplos dos novos links está em `docs/prompt-examples-automation.md`; essa automação ainda não está ativada.
 - Filtros de análise distinguem aguardando/em andamento, analisado, indisponível/falha e revisão. Revisão inclui classificação sinalizada e roteiros parciais do piloto.
 
 Verificações locais: `node tests/discovery.cjs`, `node --test tests/organization.mjs` e `node build.cjs`. A suíte `tests/library.cjs` exige um navegador Playwright instalado.

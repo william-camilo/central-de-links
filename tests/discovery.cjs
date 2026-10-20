@@ -18,6 +18,20 @@ for(const q of ['palavrasonafala','TEXTOSONATELA','ferramentasoaqui','referencia
 }
 assert.equal(check('Object.keys(window.CENTRAL_GUIDES).length'),10);
 assert.equal(check('TOPICS.length'),6);
+const visuals=ctx.window.CENTRAL_GUIDES['f6c7f0d2-e3bf-4b90-825f-d27213ecc59e'].visualExamples;
+assert.equal(visuals.examples.length,3);
+for(const file of [visuals.base,...visuals.examples.map(e=>e.image)]){
+ assert.ok(fs.statSync(require('node:path').join(__dirname,'..',file)).size>1000);
+ assert.notEqual(check('exampleImageUrl('+JSON.stringify(file)+')'),'#');
+}
+assert.equal(check("exampleImageUrl('javascript:alert(1)')"),'#');
+for(const example of visuals.examples){
+ ctx.exampleCommand=example.command;
+ const rendered=check("promptExample(window.CENTRAL_GUIDES['f6c7f0d2-e3bf-4b90-825f-d27213ecc59e'].visualExamples,exampleCommand)");
+ assert.equal((rendered.match(/<img /g)||[]).length,2);
+ assert.ok(rendered.includes('Copiar prompt do exemplo')&&rendered.includes('Antes')&&rendered.includes('Depois'));
+ assert.ok(example.prompt.length>100);
+}
 for(const g of Object.values(ctx.window.CENTRAL_GUIDES)){assert.ok(g.steps.length&&g.example&&g.prompt&&g.goal&&g.tools.length);assert.ok(g.topics.every(t=>['prompts','imagens','videos','agentes','automacao','sites'].includes(t)));}
 assert.equal(check("matchesAnalysis({video_status:'downloading'},'pending')"),true);
 assert.equal(check("matchesAnalysis({video_status:'no_video'},'unavailable')"),true);

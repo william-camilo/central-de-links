@@ -223,3 +223,33 @@ window.CENTRAL_GUIDES = {
     "prompt": "Revise esta tradução de um vídeo de produto comparando original e versão traduzida. Preserve nomes, medidas e termos técnicos. Liste trechos com sentido alterado, pronúncia a conferir e legendas longas. Não acrescente benefícios ou especificações ausentes."
   }
 };
+
+// Demonstrações geradas: mesma imagem-base e instruções completas usadas na edição.
+window.CENTRAL_GUIDES['f6c7f0d2-e3bf-4b90-825f-d27213ecc59e'].visualExamples = {
+  "base": "assets/prompt-examples/pessoa-base.webp",
+  "generator": "Geração de imagens do ChatGPT",
+  "created": "2026-10-20",
+  "examples": [
+    {
+      "command": "/magazine-cover",
+      "title": "Capa de revista",
+      "image": "assets/prompt-examples/capa-revista.webp",
+      "change": "Acrescenta título, chamadas e uma composição editorial à mesma pessoa.",
+      "prompt": "Use a foto anexada como referência para criar uma capa de revista fictícia. Preserve a identidade, o rosto, o cabelo, a barba, a expressão e a camiseta cinza da pessoa. Formato vertical 2:3. Fundo claro, iluminação editorial suave e composição elegante, sem alterar a idade ou a anatomia. Insira somente estes textos em português, com boa legibilidade e sem cobrir o rosto: título grande no topo “CRIATIVO”; chamada “IDEIAS EM AÇÃO”; subtítulo “Uma nova perspectiva”. Use tipografia editorial preta, com um pequeno detalhe em laranja. Não acrescente marcas reais, códigos de barras ou outros textos."
+    },
+    {
+      "command": "/relight",
+      "title": "Iluminação de estúdio",
+      "image": "assets/prompt-examples/iluminacao-azul.webp",
+      "change": "Troca o fundo neutro por azul-escuro e acrescenta luz lateral e recorte azul.",
+      "prompt": "Use a foto anexada como referência. Altere apenas a iluminação e o fundo: crie um retrato de estúdio com luz principal suave à esquerda, luz de recorte azul à direita e fundo azul-escuro. Preserve a identidade, o rosto, o cabelo, a barba, a expressão, a camiseta cinza, a pose e o enquadramento da pessoa. Mantenha textura realista da pele e contraste equilibrado. Formato quadrado. Sem texto, logotipos ou marcas-d’água."
+    },
+    {
+      "command": "/youtube-thumbnail",
+      "title": "Miniatura de YouTube",
+      "image": "assets/prompt-examples/miniatura-youtube.webp",
+      "change": "Reorganiza o retrato em uma capa horizontal com texto grande e fundo gráfico.",
+      "prompt": "Use a foto anexada para criar uma miniatura de YouTube em formato horizontal 16:9. Preserve a identidade, o rosto, o cabelo, a barba, a expressão e a camiseta cinza da pessoa. Posicione a pessoa na metade direita e coloque na metade esquerda somente o texto grande “FOTOS COM IA”, em duas linhas, bem legível em tela pequena. Fundo gráfico azul-escuro com um brilho ciano atrás da pessoa e detalhes geométricos discretos. Use letras brancas e amarelas, alto contraste e uma composição limpa. Não adicione logotipos, marcas reais, outras pessoas ou textos extras."
+    }
+  ]
+};

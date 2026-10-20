@@ -829,16 +829,30 @@ function renderGuides(){
     +'<p class="theme-description">Assuntos sugeridos pelo conteúdo, sem mover as categorias existentes. Um link pode aparecer em várias pastas.</p>'
     +'<section><div class="section-heading"><h2>10 fichas para começar</h2><span class="count-chip">'+pilot.length+' disponíveis</span></div><p class="theme-description">Roteiros preparados a partir das transcrições e textos já extraídos. Exemplos sugeridos estão identificados; nem todo vídeo fornece um tutorial completo.</p><div class="library-grid">'+pilot.map(recentCard).join('')+'</div></section>';
 }
+function exampleImageUrl(path){return /^assets\/prompt-examples\/[a-z0-9-]+\.webp$/.test(path||'')?path:'#';}
+function promptExample(visuals,command){
+  if(!visuals)return '';
+  var example=visuals.examples.find(function(e){return e.command===command;});
+  if(!example)return '';
+  var before=exampleImageUrl(visuals.base),after=exampleImageUrl(example.image);
+  return '<section class="prompt-example" aria-label="'+esc(example.title)+' — antes e depois"><h4>'+esc(example.title)+'</h4><p>'+esc(example.change)+'</p>'
+    +'<div class="example-comparison"><figure><figcaption><b>Antes</b><span>Pessoa fictícia gerada por IA</span></figcaption><a href="'+esc(before)+'" target="_blank" rel="noopener" aria-label="Ampliar foto-base"><img src="'+esc(before)+'" loading="lazy" alt="Foto-base: homem fictício de camiseta cinza em fundo neutro"></a></figure>'
+    +'<figure><figcaption><b>Depois</b><span>'+esc(example.title)+'</span></figcaption><a href="'+esc(after)+'" target="_blank" rel="noopener" aria-label="Ampliar resultado: '+esc(example.title)+'"><img src="'+esc(after)+'" loading="lazy" alt="Resultado gerado: '+esc(example.title)+'"></a></figure></div>'
+    +'<p class="guide-source">Exemplo criado com '+esc(visuals.generator)+'. A mesma foto-base foi usada nas três demonstrações. O prompt completo abaixo é uma adaptação; o comando curto da fonte não foi testado isoladamente.</p>'
+    +'<details class="example-prompt"><summary>Ver o prompt completo usado neste resultado</summary><pre>'+esc(example.prompt)+'</pre></details>'
+    +'<div class="example-actions"><button class="vid-copy" type="button" data-copy-excerpt="'+esc(example.prompt)+'">Copiar prompt do exemplo</button><a href="'+esc(before)+'" download="pessoa-base.webp">Baixar foto-base</a><a href="'+esc(after)+'" download>Baixar resultado</a></div>'
+    +'<p class="guide-source">Para testar: baixe a foto-base, anexe na ferramenta e cole o prompt. Novas gerações podem variar.</p></section>';
+}
 function guideSection(l){
   var g=guideFor(l);if(!g)return '';
   return '<section class="application-guide" aria-label="Ficha de aplicação"><div class="guide-heading"><span class="eyebrow">FICHA DE APLICAÇÃO · PILOTO</span><h2>Como aproveitar este conteúdo</h2></div>'
-    +'<div class="guide-source">Roteiro editorial baseado no conteúdo extraído em 20/10/2026. Não foi testado na ferramenta citada.</div>'
+    +'<div class="guide-source">Roteiro editorial baseado no conteúdo extraído em 20/10/2026. '+(g.visualExamples?'Veja os exemplos gerados e as instruções usadas abaixo.':'Não foi testado na ferramenta citada.')+'</div>'
     +'<h3>Resultado esperado</h3><p>'+esc(g.goal)+'</p><h3>Ferramentas</h3><div class="tool-chips">'+g.tools.map(function(t){return '<span class="tool-chip">'+esc(t)+'</span>';}).join('')+'</div>'
     +'<h3>'+ (g.complete?'Passo a passo descrito no conteúdo':'O que o conteúdo permite preparar')+'</h3><ol>'+g.steps.map(function(t){return '<li>'+esc(t)+'</li>';}).join('')+'</ol>'
     +(g.gap?'<p class="guide-gap"><strong>Falta na fonte:</strong> '+esc(g.gap)+'</p>':'')
-    +(g.extracted.length?'<h3>Comandos citados na fonte</h3><p class="guide-source">Trechos da transcrição ou da tela. A citação não garante que sejam comandos oficiais da ferramenta.</p>'+g.extracted.map(function(t){return '<div class="prompt-box"><pre>'+esc(t)+'</pre><button class="vid-copy" type="button" data-copy-excerpt="'+esc(t)+'">Copiar comando citado</button></div>';}).join(''):'<p class="guide-source">O conteúdo extraído não contém um prompt completo para copiar.</p>')
+    +(g.extracted.length?'<h3>Comandos citados na fonte</h3><p class="guide-source">Trechos da transcrição ou da tela. A citação não garante que sejam comandos oficiais da ferramenta.</p>'+g.extracted.map(function(t){return '<div class="prompt-box"><pre>'+esc(t)+'</pre><button class="vid-copy" type="button" data-copy-excerpt="'+esc(t)+'">Copiar comando citado</button>'+promptExample(g.visualExamples,t)+'</div>';}).join(''):'<p class="guide-source">O conteúdo extraído não contém um prompt completo para copiar.</p>')
     +'<h3>Exemplo de aplicação</h3><p>'+esc(g.example)+'</p><div class="suggested-prompt"><span class="guide-source">Sugestão criada para este guia · não é uma transcrição</span><div class="prompt-box"><pre>'+esc(g.prompt)+'</pre><button class="vid-copy" type="button" data-copy-excerpt="'+esc(g.prompt)+'">Copiar sugestão</button></div></div>'
-    +'<figure class="guide-visual">'+((l.link_images||[]).length?'<img src="'+esc(safeUrl(l.link_images[0].url))+'" loading="lazy" alt="Prévia do conteúdo original"><figcaption>Referência visual do conteúdo original. O exemplo sugerido acima ainda não foi executado.</figcaption>':'<div class="guide-visual-flow"><span>01 · Escolher objetivo</span><span>02 · Preparar instrução</span><span>03 · Testar e revisar</span></div><figcaption>Esquema ilustrativo para aplicar esta ficha; a fonte não tem uma imagem salva.</figcaption>')+'</figure>'
+    +(g.visualExamples?'':'<figure class="guide-visual">'+((l.link_images||[]).length?'<img src="'+esc(safeUrl(l.link_images[0].url))+'" loading="lazy" alt="Prévia do conteúdo original"><figcaption>Referência visual do conteúdo original. O exemplo sugerido acima ainda não foi executado.</figcaption>':'<div class="guide-visual-flow"><span>01 · Escolher objetivo</span><span>02 · Preparar instrução</span><span>03 · Testar e revisar</span></div><figcaption>Esquema ilustrativo para aplicar esta ficha; a fonte não tem uma imagem salva.</figcaption>')+'</figure>')
     +'<a class="text-action" target="_blank" rel="noopener" href="'+esc(safeUrl(l.raw_url))+'">Conferir conteúdo original ↗</a></section>';
 }
 
