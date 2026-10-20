@@ -820,6 +820,7 @@ function linkTopics(l){
   return TOPICS.filter(function(t){return t.pattern.test(text);}).map(function(t){return t.id;});
 }
 function renderGuides(){
+  searchQuery='';document.getElementById('global-search-input').value='';
   if(!state.loaded){homeEl.innerHTML=stateBlock('Carregando seus guias…');return;}
   var pilot=state.links.filter(function(l){return guideFor(l);});
   homeEl.innerHTML='<section class="guide-head"><span class="eyebrow">SUA BIBLIOTECA EM AÇÃO</span><h1>Aprenda. Teste. Aplique.</h1><p>Encontre um assunto e transforme suas referências em um próximo passo.</p></section>'
