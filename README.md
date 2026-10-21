@@ -13,6 +13,16 @@ App de leitura ao vivo dos links organizados pelo bot do Telegram [@WillexLinkBo
 - **Revisão** — confirmar a sugestão da IA, manter a categoria ou mover o conteúdo.
 - **Configurações** — gerenciamento de chaves e zona de risco recolhida, mantendo confirmação e PIN nas exclusões.
 
+## Pasta GITHUB
+
+A opção **GITHUB** na Biblioteca reúne automaticamente os repositórios presentes nos links processados pelo Telegram, nas referências e nas URLs explícitas do texto extraído. Cada repositório aparece uma única vez, agrupado pela categoria do conteúdo de origem. Links diretos têm prioridade sobre citações para a descrição e a categoria. Perfis, organizações e páginas gerais do GitHub não geram URLs de clonagem.
+
+Cada card mostra o link, o resumo disponível, a origem e a URL HTTPS terminada em `.git`, com botão de copiar. Quando não há resumo específico, `/api/github` consulta a descrição pública do GitHub, preservando o idioma original. A resposta tem cache de um dia; indisponibilidade e ausência de descrição ficam explícitas. A API não usa credenciais, não acessa repositórios privados e não executa código. A cota pública do GitHub é compartilhada pelo IP de origem.
+
+Depois de enviar um novo link ao bot, aguarde o processamento e use **Atualizar** na pasta, inclusive no celular. Nenhum registro é duplicado ou movido para uma categoria artificial "GitHub". A URL `.git` serve para clonar; a instalação segue o README de cada projeto.
+
+Testes: `node --test tests/github.cjs tests/github-api.cjs`. A suíte de navegador também cobre as categorias internas, deduplicação, descrições, cópia e seleção manual quando o navegador bloqueia a área de transferência, além da chegada de um novo link processado.
+
 ## Organização sincronizada
 
 `manage-admin` implementa `organization_get` e `organization_save`, protegidas pelo PIN existente. A tabela `library_organization` tem RLS e não permite acesso direto aos papéis públicos. Revisões impedem que um dispositivo sobrescreva alterações recentes de outro. Não há fallback em `localStorage`. Use "Atualizar" ou reabra o site para buscar alterações feitas em outro dispositivo.

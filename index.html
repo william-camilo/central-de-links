@@ -256,6 +256,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="pilot-guides.js"></script>
+<script src="github-library.js"></script>
 <script>
 (function(){
 "use strict";
@@ -863,6 +864,7 @@ function navigation(){
   var hash = location.hash || '#/';
   var nav = [
     ['#/','grid','Todos os links',state.links.length],
+    ['#/github','folder','GITHUB',window.GithubLibrary.collect(state.links).length],
     ['#/guias','folder','Guias de IA',10],
     ['#/favoritos','star','Favoritos',personalReady?state.links.filter(function(l){return metadata(l.id).favorite;}).length:'—'],
     ['#/pastas','folder','Temas e pastas',themeCategories().length],
@@ -881,11 +883,64 @@ function navigation(){
   if(!personal.folders.length)html += '<span class="nav-empty">Crie pastas para reunir suas referências por projeto ou interesse.</span>';
   html += '</nav></div><div class="sidebar-bottom"><a href="https://t.me/WillexLinkBot" target="_blank" rel="noopener">'+uiIcon('send')+'<span>Telegram<small>Envie novos links para o bot</small></span></a><a class="nav-item" href="#/config"'+(hash==='#/config'?' aria-current="page"':'')+'>'+ICO.gear+'Configurações</a></div>';
   document.getElementById('sidebar').innerHTML = html;
-  var mobileLabels = ['Links','Guias IA','Favoritos','Pastas','Revisar','Relatório'];
+  var mobileLabels = ['Links','GITHUB','Guias IA','Favoritos','Pastas','Revisar','Relatório'];
   document.getElementById('mobile-nav').innerHTML = nav.map(function(n,i){return '<a href="'+n[0]+'"'+(hash===n[0]?' aria-current="page"':'')+'>'+navIcon(n[1])+'<span>'+mobileLabels[i]+'</span></a>';}).join('');
-  var title = nav.find(function(n){return n[0]===hash;});
+  var title = nav.find(function(n){return n[0]===hash || n[0]==='#/github' && hash.indexOf('#/github/')===0;});
   var folder = personal.folders.find(function(f){return '#/pasta/'+encodeURIComponent(f.id)===hash;});
   document.getElementById('breadcrumb').textContent = title?title[2]:folder?folder.name:hash.indexOf('/config')>=0?'Configurações':hash.indexOf('/link/')>=0?'Leitura':'Categoria';
+}
+var githubDescriptions = new Map();
+function renderGithub(categoryId){
+  searchQuery='';document.getElementById('global-search-input').value='';
+  if(!state.loaded){homeEl.innerHTML=stateBlock('Carregando repositórios…');return;}
+  var repos=window.GithubLibrary.collect(state.links);
+  var groups=new Map();
+  repos.forEach(function(repo){
+    var category=state.categories.find(function(c){return c.id===repo.categoryId;});
+    if(!category){repo.categoryId='__uncategorized';category={id:'__uncategorized',name:'Sem categoria'};}
+    if(!groups.has(category.id))groups.set(category.id,{id:category.id,name:category.name,count:0});
+    groups.get(category.id).count++;
+  });
+  var categories=Array.from(groups.values()).sort(function(a,b){return a.name.localeCompare(b.name,'pt-BR');});
+  var selected=groups.get(categoryId);
+  homeEl.innerHTML='<section class="github-library"><div class="section-heading"><div class="section-title"><h1>GITHUB</h1><span class="count-chip">'+repos.length+' repositórios</span></div><button type="button" class="btn-soft" data-refresh-library>Atualizar</button></div>'
+    +'<p class="theme-description">Repositórios enviados pelo Telegram ou citados nos conteúdos salvos. Novos links aparecem aqui após o processamento e a atualização da biblioteca.</p>'
+    +'<div class="folder-grid github-categories"><a class="folder-card" href="#/github"'+(!categoryId?' aria-current="page"':'')+'><span class="folder-top">'+uiIcon('folder')+'</span><b>Todos os repositórios</b><small>'+repos.length+' repositórios</small></a>'
+    +categories.map(function(c){return '<a class="folder-card" href="#/github/'+encodeURIComponent(c.id)+'"'+(c.id===categoryId?' aria-current="page"':'')+'><span class="folder-top">'+uiIcon('folder')+'</span><b>'+esc(c.name)+'</b><small>'+c.count+' repositórios</small></a>';}).join('')+'</div>'
+    +'<div class="section-heading"><h2>'+esc(selected?selected.name:categoryId?'Categoria não encontrada':'Todos os repositórios')+'</h2><span id="github-count" class="hint" role="status"></span></div>'
+    +'<label class="search github-search">'+ICO.search+'<input id="github-search" type="search" placeholder="Buscar repositório ou função…" aria-label="Buscar repositórios"></label>'
+    +'<div id="github-results" class="github-grid"></div><p class="hint">A URL .git permite clonar o código. Consulte o README do repositório para instalar e executar.</p></section>';
+  function show(){
+    var query=normalizeSearch(document.getElementById('github-search').value);
+    var visible=repos.filter(function(repo){return (!categoryId||repo.categoryId===categoryId)&&normalizeSearch(repo.name+' '+repo.summary+' '+(repo.officialDescription||'')).includes(query);});
+    document.getElementById('github-count').textContent=visible.length+' encontrados';
+    var results=document.getElementById('github-results');
+    results.innerHTML=visible.length?visible.map(function(repo){
+      var category=groups.get(repo.categoryId);
+      return '<article class="library-card repo-card" data-repo-key="'+esc(repo.key)+'"><span class="analysis-badge">'+esc(category.name)+'</span>'
+        +'<h3><a href="'+esc(repo.url)+'" target="_blank" rel="noopener noreferrer">'+esc(repo.name)+' '+uiIcon('arrow')+'</a></h3>'
+        +'<div><h4>Função e aplicação</h4><p class="repo-description">'+esc(repo.summary||'Consultando a descrição pública do repositório…')+'</p><small class="repo-description-source">'+(repo.summary?(repo.inferred?'Resumo estimado do conteúdo salvo.':'Resumo do conteúdo salvo no Telegram.'):'')+'</small></div>'
+        +'<a class="repo-url" href="'+esc(repo.url)+'" target="_blank" rel="noopener noreferrer">'+esc(repo.url)+'</a>'
+        +'<label class="repo-clone"><span>URL .git para clonar</span><input readonly aria-label="URL .git de '+esc(repo.name)+'" value="'+esc(repo.cloneUrl)+'"></label>'
+        +'<div class="repo-actions"><button class="btn-soft primary" type="button" data-copy-repo>Copiar URL .git</button><a class="text-action" href="#/link/'+encodeURIComponent(repo.sourceId)+'">Ver conteúdo de origem</a></div></article>';
+    }).join(''):stateBlock(repos.length?'Nenhum repositório encontrado para este filtro.':'Envie um link como github.com/autor/projeto pelo Telegram. Perfis e organizações sem um projeto não entram nesta pasta.');
+    var pending=visible.filter(function(repo){return !repo.summary;});
+    async function describe(){
+      while(pending.length){
+        var repo=pending.shift();
+        if(!githubDescriptions.has(repo.key))githubDescriptions.set(repo.key,fetch('/api/github?repo='+encodeURIComponent(repo.key)).then(function(response){if(!response.ok)throw new Error();return response.json();}).catch(function(){return {unavailable:true};}));
+        var data=await githubDescriptions.get(repo.key);
+        repo.officialDescription=typeof data.description==='string'?data.description:'';
+        var card=Array.from(results.querySelectorAll('[data-repo-key]')).find(function(el){return el.dataset.repoKey===repo.key;});
+        if(!card)continue;
+        card.querySelector('.repo-description').textContent=typeof data.description==='string'&&data.description?data.description:'Não há resumo específico disponível. Abra o repositório ou o conteúdo de origem para consultar sua função.';
+        card.querySelector('.repo-description-source').textContent=data.description?'Descrição pública do GitHub, no idioma original.':data.unavailable?'Não foi possível consultar a descrição pública agora.':'O repositório não informou uma descrição pública.';
+      }
+    }
+    for(var i=0;i<Math.min(3,pending.length);i++)describe();
+  }
+  document.getElementById('github-search').addEventListener('input',show);
+  show();
 }
 function folderCard(f){
   var count = state.links.filter(function(l){return metadata(l.id).folder===f.id;}).length;
@@ -1025,6 +1080,11 @@ document.addEventListener('click',function(e){
     var excerpt=button.getAttribute('data-copy-excerpt');
     (navigator.clipboard?navigator.clipboard.writeText(excerpt):Promise.reject()).then(function(){button.textContent='Copiado ✓';},function(){button.textContent='Não foi possível copiar';});
   }
+  if(button.hasAttribute('data-copy-repo')){
+    var input=button.closest('.repo-card').querySelector('.repo-clone input');
+    (navigator.clipboard?navigator.clipboard.writeText(input.value):Promise.reject()).then(function(){button.textContent='URL copiada';notify('URL .git copiada.');},function(){input.focus();input.select();notify('Selecionei a URL. Use Ctrl+C ou a opção Copiar do celular.',true);});
+  }
+  if(button.hasAttribute('data-refresh-library'))refreshLibrary(button);
   if(button.hasAttribute('data-new-folder'))openFolderDialog();
   if(button.hasAttribute('data-edit-folder'))openFolderDialog(button.dataset.editFolder);
   if(button.hasAttribute('data-close-dialog'))document.getElementById('library-dialog').close();
@@ -1057,7 +1117,8 @@ document.getElementById('library-dialog').addEventListener('close',function(){
   var folderSelect=document.getElementById('link-folder');if(folderSelect){var selected=folderSelect.value;folderSelect.innerHTML=personalOptions(selected);}
   if(dialogReturnFocus&&dialogReturnFocus.isConnected)dialogReturnFocus.focus();
 });
-document.getElementById('refresh-library').addEventListener('click',function(e){var button=e.target;button.disabled=true;Promise.all([loadData(),loadPersonal()]).then(function(){route();button.disabled=false;if(!state.error)notify('Biblioteca atualizada.');});});
+function refreshLibrary(button){button.disabled=true;return Promise.all([loadData(),loadPersonal()]).then(function(){route();button.disabled=false;if(!state.error)notify('Biblioteca atualizada.');});}
+document.getElementById('refresh-library').addEventListener('click',function(e){refreshLibrary(e.currentTarget);});
 
 
 function stateBlock(msg){
@@ -1470,6 +1531,8 @@ function route(){
     homeEl.classList.remove('hidden');renderHome();return;
   }
 
+  var githubMatch=hash.match(/^#\/github(?:\/([^/]+))?$/);
+  if(githubMatch){homeEl.classList.remove('hidden');renderGithub(githubMatch[1]?decodeRoute(githubMatch[1]):'');window.scrollTo(0,0);return;}
   if(hash==='#/guias'){homeEl.classList.remove('hidden');topicView=true;renderGuides();window.scrollTo(0,0);return;}
   var topicMatch=hash.match(/^#\/assunto\/([^/]+)$/);
   if(topicMatch){activeTopic=decodeRoute(topicMatch[1]);libraryView='all';activeFolder='';searchQuery='';filterCategory='';filterType='all';filterAnalysis='all';visibleLimit=12;homeEl.classList.remove('hidden');renderHome();window.scrollTo(0,0);return;}

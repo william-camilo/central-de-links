@@ -20,7 +20,7 @@ let revision = 0, conflictNext = false, failRest = false, writes = 0;
 
 const server = http.createServer((request,response)=>{
   const name = new URL(request.url,'http://localhost').pathname;
-  if(!['/','/index.html','/layout.css','/pilot-guides.js'].includes(name)){response.writeHead(404);response.end();return;}
+  if(!['/','/index.html','/layout.css','/pilot-guides.js','/github-library.js'].includes(name)){response.writeHead(404);response.end();return;}
   response.setHeader('Content-Type',name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html; charset=utf-8');
   response.end(fs.readFileSync(path.join(root,name==='/'?'index.html':name.slice(1))));
 });
@@ -126,6 +126,27 @@ const server = http.createServer((request,response)=>{
     assert.equal(await page.locator('#btn-keys-open').isVisible(),true);
     failRest=true;await page.goto(base);await page.locator('[data-retry]').waitFor();failRest=false;
     await page.locator('[data-retry]').click();await page.locator('.library-card').first().waitFor();
+    links.push({...links[0],id:'github-direct',raw_url:'https://github.com/team/alpha.git',normalized_url:'github.com/team/alpha',title:'Alpha',summary:'Automação de tarefas e agentes locais.',category_id:'cat-1',cited_links:[]});
+    links.push({...links[0],id:'github-list',raw_url:'https://example.com/projects',normalized_url:'example.com/projects',summary:'Vários projetos úteis.',category_id:'cat-2',cited_links:[{url:'https://github.com/TEAM/alpha/tree/main'},{url:'https://github.com/team/beta'},{url:'https://github.com/team'}]});
+    await page.route('**/api/github?*',route=>route.fulfill({json:{description:'Organiza documentos PDF.'}}));
+    await page.goto(base+'/#/github');await page.reload();
+    await page.locator('.repo-card').first().waitFor();assert.equal(await page.locator('.repo-card').count(),2);
+    await page.getByText('Organiza documentos PDF.',{exact:true}).waitFor();
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedRepo=text;}}}));
+    await page.locator('[data-repo-key="team/alpha"] [data-copy-repo]').click();
+    await page.waitForFunction(()=>window.copiedRepo==='https://github.com/team/alpha.git');
+    await page.locator('.github-categories [href="#/github/cat-1"]').click();
+    assert.equal(await page.locator('.repo-card').count(),1);
+    await page.locator('#github-search').fill('não existe');assert.equal(await page.locator('.repo-card').count(),0);
+    await page.locator('#github-search').fill('automacao');assert.equal(await page.locator('.repo-card').count(),1);
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new Error('denied');}}}));
+    await page.locator('[data-copy-repo]').click();await page.getByText(/Selecionei a URL/).waitFor();
+    assert.equal(await page.locator('.repo-clone input').evaluate(input=>input.selectionEnd-input.selectionStart), 'https://github.com/team/alpha.git'.length);
+    for(const width of [1440,768,390,320]){await page.setViewportSize({width,height:950});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+    links.push({...links[0],id:'github-new',raw_url:'https://github.com/fresh/project',normalized_url:'github.com/fresh/project',cited_links:[]});
+    await page.goto(base+'/#/github');await page.locator('[data-refresh-library]').click();
+    await page.waitForFunction(()=>document.querySelectorAll('.repo-card').length===3);
+    await page.locator('[data-repo-key="team/alpha"] .repo-actions a').click();await page.locator('#organization-form').waitFor();
     assert.deepEqual(errors,[]);
     console.log('PASS: public thematic folders, category coverage, orphan-link access and report, responsive layout, search, filters, pagination, favorites, personal folders, classification, transcripts, PDF, two-device sync contract, conflict protection, safe folder removal, PIN settings and retry.');
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
